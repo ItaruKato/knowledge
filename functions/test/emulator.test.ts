@@ -4,7 +4,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
 import type Anthropic from '@anthropic-ai/sdk';
 import { ingestSweep } from '../src/ingest';
 import { runJob } from '../src/jobs';
@@ -59,7 +59,7 @@ async function putHandoff(patch: Record<string, unknown> = {}, status = 'done') 
     v: 1,
     id: ID,
     article: { id: ID, url: URL, title: 'テスト社がシリーズAで調達', company: 'テスト株式会社', publishedAt: '2026-11-10T10:00:00+09:00', lead: '冒頭' },
-    readAt: '2026-11-12T00:00:00Z',
+    readAt: Timestamp.fromMillis(Date.UTC(2026, 10, 12)),
     memo: 'メモ',
     myTags: [],
     stars: 1,
@@ -89,6 +89,7 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     const a = (await db.doc(`kbArticles/${ID}`).get()).data()!;
     expect(a).toMatchObject({ state: 'done', bodyFrom: 'page', themes: ['シリーズAの大型調達'], companyId: '12345', memo: 'メモ' });
     expect(a.body).toBeUndefined();
+    expect(a.readAt).toBe('2026-11-12T00:00:00.000Z');
     expect((await db.doc(`kbBodies/${ID}`).get()).data()).toMatchObject({ body: '本文です。シリーズAで5億円を調達。', from: 'page' });
     expect((await db.doc('kbThemes/シリーズAの大型調達').get()).data()).toMatchObject({ count: 1, by: 'ai' });
     expect((await db.collection('kbMeta').get()).docs.map((d) => d.id).some((k) => k.startsWith('usage_'))).toBe(true);

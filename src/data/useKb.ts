@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, doc, getCountFromServer, getDoc, getDocs, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { IngestStatus, KbArticle, KbTheme } from '../types';
+import { toIso } from '../lib/time';
 
 export interface KbData {
   articles: KbArticle[];
@@ -30,7 +31,13 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
         ]);
         if (!alive) return;
         setData({
-          articles: a.docs.map((d) => ({ ...(d.data() as KbArticle), id: d.id })).sort((x, y) => (y.readAt ?? '').localeCompare(x.readAt ?? '')),
+          articles: a.docs
+            .map((d) => {
+              const v = d.data();
+              // 日時は Firestore の Timestamp で入っていることがあるので、文字にそろえる
+              return { ...(v as KbArticle), id: d.id, readAt: toIso(v.readAt), publishedAt: toIso(v.publishedAt) ?? '', analyzedAt: toIso(v.analyzedAt) ?? undefined };
+            })
+            .sort((x, y) => (y.readAt ?? '').localeCompare(x.readAt ?? '')),
           themes: t.docs.map((d) => ({ ...(d.data() as KbTheme), name: String(d.get('name') ?? d.id) })),
           handoffCount: h.data().count,
           status: (st.data() as IngestStatus | undefined) ?? {},

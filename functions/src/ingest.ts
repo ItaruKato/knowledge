@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
-import { FieldPath, FieldValue, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, Timestamp, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
 import { analyze, ANALYSIS_V, themeName, type AnalysisOut, type AnalyzeInput } from './analyze';
 import { extractBody, httpGet, isPrtimesUrl } from './page';
 import { addUsage, type Usage } from './usage';
@@ -19,7 +19,8 @@ import { addJob, jobSweep } from './jobs';
 export interface Handoff {
   id: string;
   article?: { id?: string; url?: string; title?: string; company?: string; publishedAt?: string; lead?: string };
-  readAt?: string | null;
+  /** Watcher の saved.decision.at（Firestore の Timestamp のことがある） */
+  readAt?: string | Timestamp | null;
   memo?: string;
   myTags?: string[];
   stars?: number;
@@ -54,7 +55,7 @@ function copied(h: Handoff) {
     company: a.company ?? '',
     url: a.url ?? '',
     publishedAt: a.publishedAt ?? '',
-    readAt: h.readAt ?? null,
+    readAt: h.readAt instanceof Timestamp ? h.readAt.toDate().toISOString() : (h.readAt ?? null),
     memo: h.memo ?? '',
     myTags: h.myTags ?? [],
     stars: h.stars ?? 0,
