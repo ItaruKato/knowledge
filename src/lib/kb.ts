@@ -115,3 +115,16 @@ export function themesByService(themes: KbTheme[]): { service: string; themes: K
 
 /** 並べ方：★が多い順 → 配信日の新しい順 */
 export const byStarsThenDate = (x: KbArticle, y: KbArticle) => (y.stars ?? 0) - (x.stars ?? 0) || (y.publishedAt ?? '').localeCompare(x.publishedAt ?? '');
+
+/** 全記事の検索で絞り込める記事の種類（functions/src/analyze.ts の ARTICLE_TYPES のうち、知識に入れるもの） */
+export const ARTICLE_TYPES_SHOWN = [
+  '新規事業・新商品・新サービス',
+  '資金調達',
+  'M&A・資本提携',
+  '業務提携・協業',
+  '上場・IPO',
+  '経営・組織（中期計画・新会社・拠点・体制）',
+  '海外展開',
+  '業績・決算',
+  'その他',
+] as const;

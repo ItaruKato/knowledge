@@ -1,6 +1,8 @@
 /** kbArticles/{記事ID}（Knowledge Base の関数が書く。functions/src/ingest.ts と同じ形） */
 export interface KbArticle {
   id: string;
+  /** handoff：読んだ記事。search：全記事の検索から詳しく整理した記事 */
+  source?: 'handoff' | 'search';
   companyId: string;
   title: string;
   company: string;

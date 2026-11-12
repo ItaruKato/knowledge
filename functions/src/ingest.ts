@@ -4,6 +4,7 @@ import { FieldPath, FieldValue, Timestamp, type DocumentSnapshot, type Firestore
 import { analyze, ANALYSIS_V, EXCLUDED_TYPES, ruleExcluded, themeName, type AnalysisOut, type AnalyzeInput } from './analyze';
 import { extractBody, httpGet, isPrtimesUrl } from './page';
 import { addUsage, type Usage } from './usage';
+import type { Embed } from './vertex';
 import { withLease } from './lease';
 import { companyLine } from './ledger';
 export { companyLine } from './ledger';
@@ -69,6 +70,8 @@ function copied(h: Handoff) {
 export interface IngestDeps {
   db: Firestore;
   client: () => Anthropic;
+  /** 全記事の検索の依頼（kbJobs の search）を拾ったときに使う */
+  embed?: Embed;
   get?: (url: string) => Promise<string>;
   log?: (msg: string, data?: Record<string, unknown>) => void;
   budgetMs?: number;
@@ -110,13 +113,13 @@ async function exclude(
 
 type Outcome = 'analyzed' | 'synced' | 'removed' | 'failed' | 'skipped' | 'excluded';
 
-async function loadThemes(db: Firestore): Promise<Map<string, number>> {
+export async function loadThemes(db: Firestore): Promise<Map<string, number>> {
   const snap = await db.collection('kbThemes').get();
   return new Map(snap.docs.map((d) => [String(d.get('name') ?? d.id), Number(d.get('count') ?? 0)]));
 }
 
 /** テーマの件数を直す（新しいテーマは作る） */
-async function applyThemes(db: Firestore, themes: Map<string, number>, before: string[], after: AnalysisOut['themes']) {
+export async function applyThemes(db: Firestore, themes: Map<string, number>, before: string[], after: AnalysisOut['themes']) {
   const b = new Set(before);
   const batch = db.batch();
   const now = new Date().toISOString();

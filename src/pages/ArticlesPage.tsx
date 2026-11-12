@@ -21,8 +21,10 @@ function StatusLine({ s }: { s: IngestStatus }) {
 
 /** 読んだ記事（読了にした順） */
 export function ArticlesPage({ data, q }: { data: KbData; q: string }) {
-  const shown = q.trim() ? data.articles.filter((a) => matchesText(a, q, data.names[a.companyId])) : data.articles;
-  const done = data.articles.filter((a) => a.state === 'done').length;
+  // 読んだ記事だけ（全記事の検索から詳しく整理した記事は、先行事例・ネタ帳・つながりにだけ出す）
+  const mine = data.articles.filter((a) => a.source !== 'search');
+  const shown = q.trim() ? mine.filter((a) => matchesText(a, q, data.names[a.companyId])) : mine;
+  const done = mine.filter((a) => a.state === 'done').length;
   return (
     <>
       <section className="stats">

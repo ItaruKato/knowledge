@@ -9,6 +9,7 @@ export function ArticleCard({ a, name }: { a: KbArticle; name?: string }) {
     <article className="card kbcard">
       <div className="badges">
         {k?.isCase && <span className="badge case">事例</span>}
+        {a.source === 'search' && <span className="badge">全記事から整理（未読）</span>}
         {k?.industry && <span className="badge ind">{k.industry}</span>}
         {k?.stage && k.stage !== '不明' && <span className="badge stage">{k.stage}</span>}
         {!k && <span className="badge wait">{a.state === 'failed' ? '整理をやり直し中' : '整理待ち'}</span>}

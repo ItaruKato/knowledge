@@ -41,6 +41,9 @@ jobs:
         with:
           workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/github
           service_account: github-deploy@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+      - name: 意味で探すための API（Vertex AI）を有効にする
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
+        run: gcloud services enable aiplatform.googleapis.com --project "$PROJECT_ID"
       - name: Hosting のサイトがなければ作る
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
         run: |

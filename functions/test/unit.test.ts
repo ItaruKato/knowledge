@@ -128,3 +128,25 @@ describe('company', () => {
     expect(c).toContain('いまあるビジネス:\n- 会計SaaS');
   });
 });
+
+import { clsContent, jstHourKey } from '../src/allindex';
+import { passes } from '../src/search';
+import { docText } from '../src/vertex';
+
+describe('全記事の目録と検索', () => {
+  it('分類に渡す1行（区切りの記号・改行はそろえる）', () => {
+    expect(clsContent([{ id: '1.2', company: 'A社', title: 'タイトル｜改行\nあり', lead: '冒頭' }])).toBe('1.2｜A社｜タイトル 改行 あり｜冒頭');
+    expect(docText({ company: 'A社', title: 'T', lead: 'L', keywords: ['k1', 'k2'] })).toBe('A社\nT\nL\nk1、k2');
+    expect(jstHourKey(Date.UTC(2026, 8, 30, 16))).toBe('2026100101');
+  });
+  it('期間・種類・事例だけで絞る。外した記事は出さない', () => {
+    const now = Date.UTC(2026, 10, 12);
+    const d = { state: 'done', publishedAt: '2026-11-10T10:00:00+09:00', type: '資金調達', isCase: true };
+    expect(passes(d, {}, now)).toBe(true);
+    expect(passes({ ...d, state: 'excluded' }, {}, now)).toBe(false);
+    expect(passes({ ...d, publishedAt: '2026-10-01T00:00:00+09:00' }, { period: 'week' }, now)).toBe(false);
+    expect(passes(d, { types: ['M&A・資本提携'] }, now)).toBe(false);
+    expect(passes({ ...d, isCase: false }, { casesOnly: true }, now)).toBe(false);
+    expect(passes({ state: 'new', publishedAt: d.publishedAt }, {}, now)).toBe(true);
+  });
+});

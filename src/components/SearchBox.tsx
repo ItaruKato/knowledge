@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 
 /** 検索窓。入力した言葉は × ボタン（または Esc キー）で一度に消せる */
-export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+export function SearchBox({ value, onChange, placeholder, onSubmit }: { value: string; onChange: (v: string) => void; placeholder: string; onSubmit?: () => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const clear = () => {
     onChange('');
@@ -22,6 +22,12 @@ export function SearchBox({ value, onChange, placeholder }: { value: string; onC
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
+          // Enter で探す（日本語の変換中の Enter は除く）
+          if (e.key === 'Enter' && onSubmit && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            onSubmit();
+            return;
+          }
           if (e.key === 'Escape' && value) {
             e.preventDefault();
             clear();

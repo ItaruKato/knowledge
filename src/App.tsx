@@ -15,6 +15,7 @@ import { CasesPage } from './pages/CasesPage';
 import { ThemesPage } from './pages/ThemesPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyPage } from './pages/CompanyPage';
+import { AllPage } from './pages/AllPage';
 
 const TABS = [
   { path: '/', label: '読んだ記事' },
@@ -22,6 +23,7 @@ const TABS = [
   { path: '/themes', label: 'ネタ帳' },
   { path: '/companies', label: '会社' },
   { path: '/graph', label: 'つながり' },
+  { path: '/all', label: '全記事' },
 ];
 
 const PLACEHOLDER: Record<string, string> = {
@@ -30,6 +32,7 @@ const PLACEHOLDER: Record<string, string> = {
   '/themes': 'テーマ・ネタを探す',
   '/companies': '会社を探す（会社名・業界）',
   '/graph': 'つながりの中で探す（当てはまる丸を光らせる）',
+  '/all': '全記事を意味で探す（入れて Enter）',
 };
 
 function Home({ user }: { user: User }) {
@@ -37,6 +40,8 @@ function Home({ user }: { user: User }) {
   const { data, error } = useKb();
   // 検索した言葉（タブを切り替えても残す。× で一度に消せる）
   const [q, setQ] = useState('');
+  // 全記事のタブで Enter を押した回数（押すたびに探す）
+  const [submitSeq, setSubmitSeq] = useState(0);
   const tab = path.startsWith('/cases')
     ? '/cases'
     : path.startsWith('/themes')
@@ -45,7 +50,9 @@ function Home({ user }: { user: User }) {
         ? '/companies'
         : path.startsWith('/graph')
           ? '/graph'
-          : '/';
+          : path.startsWith('/all')
+            ? '/all'
+            : '/';
   const cid = /^\/c\/(\d{1,12})$/.exec(path)?.[1] ?? null;
   const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
@@ -66,12 +73,13 @@ function Home({ user }: { user: User }) {
           </a>
         ))}
       </nav>
-      <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} />
+      <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} onSubmit={tab === '/all' ? () => setSubmitSeq((x) => x + 1) : undefined} />
       {error && <p className="err">読み込めませんでした：{error}</p>}
       {!data && !error && <p className="note">読み込み中…</p>}
       {data && tab === '/' && <ArticlesPage data={data} q={q} />}
       {data && tab === '/cases' && <CasesPage data={data} q={q} />}
       {data && tab === '/themes' && <ThemesPage data={data} theme={theme} q={q} />}
+      {data && tab === '/all' && <AllPage data={data} q={q} submitSeq={submitSeq} />}
       {data && tab === '/graph' && (
         <Suspense fallback={<p className="note">つながりの図を読み込み中…</p>}>
           <GraphPage data={data} q={q} />
