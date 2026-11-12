@@ -8,6 +8,7 @@ import { withLease } from './lease';
 import { companyLine } from './ledger';
 export { companyLine } from './ledger';
 import { addJob, jobSweep } from './jobs';
+import { COMPANY_V } from './company';
 
 /**
  * 読了にした記事（Watcher の handoff）を Knowledge Base に取り込む。
@@ -268,6 +269,17 @@ export async function ingestSweep(deps: IngestDeps) {
         cursor = { at: h.updatedAt, id: d.id };
       }
     }
+    // 2-2. まとめ方を変えたとき（COMPANY_V を上げたとき）は、まとめのある会社を一度ずつまとめ直す（1回に5社まで）
+    const old = await db.collection('kbCompanies').where('v', '<', COMPANY_V).limit(20).get();
+    let upgraded = 0;
+    for (const d of old.docs) {
+      if (upgraded >= 5) break;
+      if (d.get('upgradeAskedV') === COMPANY_V) continue;
+      await d.ref.set({ upgradeAskedV: COMPANY_V }, { merge: true });
+      await addJob(db, { type: 'company', id: d.id, by: 'upgrade' });
+      upgraded++;
+    }
+
     // 3. 届かなかった画面からの依頼と、古い依頼の片づけ
     const jobs = await jobSweep(deps, until);
     const total = (await db.collection('kbArticles').count().get()).data().count;

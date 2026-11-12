@@ -46,3 +46,9 @@ export interface IngestStatus {
   lastErrorAt?: string;
   last?: Record<string, number>;
 }
+
+/** kbCompanies/{会社ID} の、つながりの図で使う部分（会社の AI のまとめ。functions/src/company.ts） */
+export interface KbCompanyInfo {
+  businesses?: string[];
+  capital?: { counterpart: string; relation: string; date: string; articleId: string }[];
+}

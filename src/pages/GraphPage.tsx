@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph3D from '3d-force-graph';
 import ForceGraph from 'force-graph';
 import SpriteText from 'three-spritetext';
-import { around, buildGraph, matchingNodes, neighbors, similarOf, type GLink, type GNode, type Graph } from '../lib/graph';
+import { around, buildGraph, capitalOf, matchingNodes, neighbors, type GLink, type GNode, type Graph } from '../lib/graph';
 import { fmtDate, n } from '../lib/format';
 import { linkProps, navigate } from '../lib/router';
 import type { KbData } from '../data/useKb';
 
 /**
- * 知識のつながり（会社・テーマ・業界の丸と、似ている会社どうしの線）。3D と 2D を切り替えられる。
+ * 知識のつながり。会社と会社を直接結ぶ線は資本関係だけ。ビジネスが似ている会社は 会社─ビジネス─会社 でつなぐ。3D と 2D を切り替えられる。
  * 丸を押すと、周りだけ光らせ、横に要点を出す。「ここを中心に広げる」で2歩先までに絞る。
  */
 
@@ -30,7 +30,9 @@ function palette() {
         bg: '#0b0e14',
         company: '#f2f4f8',
         industry: '#5fd3e6',
-        similar: '#9db1ff',
+        business: '#ff9f5a',
+        capital: '#ff6b6b',
+        external: '#7c8496',
         text: '#f2f4f8',
         service: { '経営・事業支援': '#b49cff', '資金調達・M&A支援': '#f2c14e', 'マーケ・営業支援': '#ff8fb1', '人材・組織支援': '#7fdcaa', その他: '#a3acbb' } as Record<string, string>,
       }
@@ -38,7 +40,9 @@ function palette() {
         bg: '#f4f6fa',
         company: '#1f2633',
         industry: '#0f7f93',
-        similar: '#2a3d8f',
+        business: '#c2410c',
+        capital: '#d62d2d',
+        external: '#9aa1ad',
         text: '#10141c',
         service: { '経営・事業支援': '#6b46c1', '資金調達・M&A支援': '#b07800', 'マーケ・営業支援': '#c2185b', '人材・組織支援': '#17663f', その他: '#6b7280' } as Record<string, string>,
       };
@@ -52,10 +56,10 @@ function fade(hex: string, bg: string, t = 0.82): string {
 }
 
 const endId = (v: unknown) => (typeof v === 'string' ? v : (v as { id: string }).id);
-const KIND_LABEL = { company: '会社', theme: 'テーマ', industry: '業界' } as const;
+const KIND_LABEL = { company: '会社', business: 'ビジネス', theme: 'テーマ', industry: '業界' } as const;
 
 type AnyGraph = {
-  graphData: (d: Graph) => AnyGraph;
+  graphData: (d: Pick<Graph, "nodes" | "links">) => AnyGraph;
   width: (w: number) => AnyGraph;
   height: (h: number) => AnyGraph;
   _destructor: () => void;
@@ -64,15 +68,14 @@ type AnyGraph = {
 
 export default function GraphPage({ data, q }: { data: KbData; q: string }) {
   const [mode, setMode] = useState<Mode>(readMode);
-  const [similar, setSimilar] = useState(true);
-  const [showInd, setShowInd] = useState(true);
+  const [show, setShow] = useState({ businesses: true, capital: true, themes: true, industries: false });
   const [selected, setSelected] = useState<string | null>(null);
   const [center, setCenter] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const graphRef = useRef<AnyGraph | null>(null);
 
-  const full = useMemo(() => buildGraph(data.articles, data.names, data.themes, { similar, industries: showInd }), [data, similar, showInd]);
+  const full = useMemo(() => buildGraph(data.articles, data.names, data.themes, data.companies, show), [data, show]);
   const g = useMemo(() => (center && full.nodes.some((x) => x.id === center) ? around(full, center, 2) : full), [full, center]);
   const hits = useMemo(() => matchingNodes(g, q, data.articles, data.names), [g, q, data.articles, data.names]);
   const focus = useMemo(() => (selected ? neighbors(g, selected) : null), [g, selected]);
@@ -98,12 +101,21 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
       return true;
     };
     const nodeColor = (node: GNode) => {
-      const c = node.kind === 'company' ? pal.company : node.kind === 'industry' ? pal.industry : (pal.service[node.service ?? 'その他'] ?? pal.service['その他']);
+      const c =
+        node.kind === 'company'
+          ? node.external
+            ? pal.external
+            : pal.company
+          : node.kind === 'business'
+            ? pal.business
+            : node.kind === 'industry'
+              ? pal.industry
+              : (pal.service[node.service ?? 'その他'] ?? pal.service['その他']);
       return lit(node.id) ? c : fade(c, pal.bg);
     };
     const linkLit = (l: GLink) => lit(endId(l.source)) && lit(endId(l.target));
     const linkColor = (l: GLink) => {
-      const c = l.kind === 'similar' ? pal.similar : l.kind === 'industry' ? pal.industry : pal.service['その他'];
+      const c = l.kind === 'capital' ? pal.capital : l.kind === 'business' ? pal.business : l.kind === 'industry' ? pal.industry : pal.service['その他'];
       return linkLit(l) ? c : fade(c, pal.bg, 0.9);
     };
     const onClick = (node: GNode & { x?: number; y?: number; z?: number }) => {
@@ -140,7 +152,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
         })
         .linkColor((l) => linkColor(l as GLink))
         .linkOpacity(0.55)
-        .linkWidth((l) => ((l as GLink).kind === 'similar' ? 1.4 : 0.35))
+        .linkWidth((l) => ((l as GLink).kind === 'capital' ? 2.2 : (l as GLink).kind === 'business' ? 0.9 : 0.3))
         .onNodeClick((x) => onClick(x as GNode))
         .onBackgroundClick(() => choose(null));
       gr = fg as unknown as AnyGraph;
@@ -163,8 +175,10 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           ctx.fillText(node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label, node.x, node.y + r + 2 / scale);
         })
         .linkColor((l) => linkColor(l as GLink))
-        .linkWidth((l) => ((l as GLink).kind === 'similar' ? 1.6 : 0.6))
-        .linkLineDash((l) => ((l as GLink).kind === 'similar' ? [4, 3] : null))
+        .linkWidth((l) => ((l as GLink).kind === 'capital' ? 2.6 : (l as GLink).kind === 'business' ? 1.4 : 0.6))
+        .linkLineDash((l) => ((l as GLink).kind === 'theme' || (l as GLink).kind === 'industry' ? [2, 3] : null))
+        .linkDirectionalArrowLength((l) => ((l as GLink).directed ? 6 : 0))
+        .linkDirectionalArrowRelPos(0.6)
         .onNodeClick((x) => onClick(x as GNode))
         .onBackgroundClick(() => choose(null));
       gr = fg as unknown as AnyGraph;
@@ -221,8 +235,10 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
   };
 
   const node = selected ? byId.get(selected) : undefined;
-  const companies = g.nodes.filter((x) => x.kind === 'company').length;
-  const similarLinks = g.links.filter((l) => l.kind === 'similar').length;
+  const companies = g.nodes.filter((x) => x.kind === 'company' && !x.external).length;
+  const businessCount = g.nodes.filter((x) => x.kind === 'business').length;
+  const capitalLinks = g.links.filter((l) => l.kind === 'capital').length;
+  const noBusiness = data.articles.length > 0 && Object.values(data.companies).every((c) => !c.businesses?.length);
   const pal = palette();
 
   return (
@@ -236,21 +252,26 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
             2D
           </button>
         </div>
-        <label className="check">
-          <input type="checkbox" checked={similar} onChange={(e) => setSimilar(e.target.checked)} />
-          似ている会社どうしの線
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />
-          業界の丸
-        </label>
+        {(
+          [
+            ['businesses', 'ビジネス'],
+            ['capital', '資本関係'],
+            ['themes', 'テーマ'],
+            ['industries', '業界'],
+          ] as const
+        ).map(([k, label]) => (
+          <label key={k} className="check">
+            <input type="checkbox" checked={show[k]} onChange={(e) => setShow({ ...show, [k]: e.target.checked })} />
+            {label}
+          </label>
+        ))}
         {center && (
           <button type="button" className="ghost" onClick={() => setCenter(null)}>
             全体に戻る
           </button>
         )}
         <span className="meta">
-          会社 {n(companies)} · 似ている線 {n(similarLinks)}
+          会社 {n(companies)} · ビジネス {n(businessCount)} · 資本関係 {n(capitalLinks)}
           {hits ? ` · 「${q.trim()}」に当てはまる丸 ${n(hits.size)}` : ''}
         </span>
       </div>
@@ -261,13 +282,23 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
             <>
               <h3>知識のつながり</h3>
               <p className="line">
-                読んだ記事の会社を、テーマ・業界でつなぎました。点線（2D）・太い線（3D）は、共通点の多い「似ている会社」どうしです。丸を押すと、つながる丸だけが光り、ここに要点が出ます。
+                会社と会社を直接結ぶ赤い線は<b>資本関係</b>（出資・買収・子会社化・資本業務提携など。2D の矢印は、出資・買収する側 → される側）だけです。ビジネスが似ている会社は、オレンジの<b>ビジネス</b>の丸を間にはさんでつながります。丸を押すと、つながる丸だけが光り、ここに要点が出ます。
               </p>
+              {noBusiness && <p className="note">ビジネスと資本関係は、会社の AI のまとめを作り直すと出てきます（自動で1社ずつ進めています）。</p>}
               <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}何もない所を押すと元に戻ります。</p>
               <b className="lbl">丸の色</b>
               <ul className="legend">
                 <li>
                   <i style={{ background: pal.company }} />会社（大きいほど記事・★が多い）
+                </li>
+                <li>
+                  <i style={{ background: pal.external }} />資本関係の相手（まだ記事を読んでいない会社・ファンド）
+                </li>
+                <li>
+                  <i style={{ background: pal.business }} />ビジネス（事業）
+                </li>
+                <li>
+                  <i className="bar" style={{ background: pal.capital }} />資本関係の線
                 </li>
                 <li>
                   <i style={{ background: pal.industry }} />業界
@@ -279,7 +310,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
                   </li>
                 ))}
               </ul>
-              <p className="note">似ている会社は、同じテーマ（3点）・同じ業界（2点）・同じ課題/狙い（1点）・同じ規模/段階（1点）の合計が3点以上の会社です。</p>
+              <p className="note">会社を押すと「似ている会社」も出ます（線にはしません）。同じビジネス・同じテーマ（各3点）、同じ業界（2点）、同じ課題/狙い・同じ規模/段階（各1点）の合計が3点以上の会社です。</p>
             </>
           ) : (
             <NodePanel
@@ -330,10 +361,48 @@ function NodePanel({
     </button>
   );
 
+  const cap = capitalOf(g, node.id);
+  const capList = cap.length > 0 && (
+    <>
+      <b className="lbl">資本関係（{cap.length}件）</b>
+      <ul className="simlist">
+        {cap.map((c, i) => (
+          <li key={i}>
+            <span className="badge cap">{c.relation}</span>
+            {jump(c.other)}
+            <small className="sub">
+              {c.date}
+              {c.articleId && (
+                <>
+                  {' · '}
+                  <a href={`https://prtimes.jp/main/html/rd/p/${c.articleId}.html`} target="_blank" rel="noreferrer">
+                    根拠の記事
+                  </a>
+                </>
+              )}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+
+  if (node.kind === 'company' && node.external) {
+    return (
+      <div className="panelbody">
+        <span className="badge">資本関係の相手</span>
+        <h3>{node.label}</h3>
+        <p className="note">まだ記事を読んでいない会社・ファンドです。読んだ会社の資本関係から出てきました。</p>
+        <div className="panelacts">{centerBtn}</div>
+        {capList}
+      </div>
+    );
+  }
+
   if (node.kind === 'company') {
     const arts = data.articles.filter((a) => a.companyId === node.cid && a.kb);
     const kb = arts[0]?.kb;
-    const sim = similarOf(g, node.id);
+    const sim = g.similar.get(node.id) ?? [];
     return (
       <div className="panelbody">
         <span className="badge">会社</span>
@@ -369,6 +438,19 @@ function NodePanel({
             </ul>
           </div>
         )}
+        {nearOf('business').length > 0 && (
+          <>
+            <b className="lbl">ビジネス</b>
+            <div className="chips">
+              {nearOf('business').map((t) => (
+                <button key={t.id} type="button" className="chip biz" onClick={() => onSelect(t.id)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {capList}
         <b className="lbl">似ている会社（{sim.length}社）</b>
         {sim.length === 0 ? (
           <p className="note">共通点が3点以上の会社はまだありません。</p>
@@ -376,7 +458,7 @@ function NodePanel({
           <ul className="simlist">
             {sim.map((s) => (
               <li key={s.id}>
-                {jump(s.id)} <span className="score">{s.score}点</span>
+                {byId.has(s.id) ? jump(s.id) : <b>{data.names[s.id.slice(2)] ?? s.id}</b>} <span className="score">{s.score}点</span>
                 <small className="sub">{s.reasons.join('、')}</small>
               </li>
             ))}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, doc, documentId, getCountFromServer, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { IngestStatus, KbArticle, KbTheme } from '../types';
+import type { IngestStatus, KbArticle, KbCompanyInfo, KbTheme } from '../types';
 import { toIso } from '../lib/time';
 import { officialName } from '../lib/names';
 
@@ -12,6 +12,8 @@ export interface KbData {
   status: IngestStatus;
   /** 会社ID → 画面に出す会社名（正式名が分かれば正式名。src/lib/names.ts） */
   names: Record<string, string>;
+  /** 会社ID → 会社の AI のまとめのビジネスと資本関係（つながりの図で使う） */
+  companies: Record<string, KbCompanyInfo>;
 }
 
 /** 会社IDごとの正式名を、台帳（companies）から30社ずつ読む */
@@ -44,11 +46,12 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
     let alive = true;
     (async () => {
       try {
-        const [a, t, h, st] = await Promise.all([
+        const [a, t, h, st, kc] = await Promise.all([
           getDocs(query(collection(db, 'kbArticles'))),
           getDocs(collection(db, 'kbThemes')),
           getCountFromServer(collection(db, 'handoff')),
           getDoc(doc(db, 'kbMeta', 'ingest')),
+          getDocs(collection(db, 'kbCompanies')),
         ]);
         if (!alive) return;
         const articles = a.docs
@@ -63,6 +66,9 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
         setData({
           articles,
           names,
+          companies: Object.fromEntries(
+            kc.docs.map((d) => [d.id, { businesses: (d.get('ai.businesses') as string[] | undefined) ?? [], capital: (d.get('ai.capital') as KbCompanyInfo['capital']) ?? [] }]),
+          ),
           themes: t.docs.map((d) => ({ ...(d.data() as KbTheme), name: String(d.get('name') ?? d.id) })),
           handoffCount: h.data().count,
           status: (st.data() as IngestStatus | undefined) ?? {},

@@ -151,6 +151,8 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
       events: [{ date: '2026-11-10', type: '資金調達', title: 'シリーズA', amount: '5億円', counterpart: '', articleId: ID }],
       angles: ['切り口'],
       fits: [],
+      businesses: ['会計SaaS'],
+      capital: [{ counterpart: 'テストVC', relation: '出資を受けた', date: '2026-11-10', articleId: ID }],
     };
     const seen: string[] = [];
     const client = fakeClient([ai as unknown as AnalysisOut], seen);
@@ -158,13 +160,27 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     const [r1, r2] = await Promise.all([runJob({ db, client }, ref), runJob({ db, client }, ref)]);
     expect([r1, r2].sort()).toEqual(['made', 'skipped']);
     expect(seen[0]).toContain(`${ID}｜2026-11-10｜シリーズAで調達`);
-    expect((await db.doc('kbCompanies/12345').get()).data()).toMatchObject({ state: 'done', name: 'テスト株式会社', ai: { events: [{ articleId: ID }] } });
+    expect((await db.doc('kbCompanies/12345').get()).data()).toMatchObject({
+      state: 'done',
+      v: 2,
+      name: 'テスト株式会社',
+      ai: { events: [{ articleId: ID }], businesses: ['会計SaaS'], capital: [{ counterpart: 'テストVC' }] },
+    });
     expect((await ref.get()).get('state')).toBe('done');
 
     const again = await db.collection('kbJobs').add({ type: 'company', id: '12345', state: 'ready' });
     expect(await runJob({ db, client: fakeClient([]) }, again)).toBe('same');
     const bad = await db.collection('kbJobs').add({ type: 'company', id: '../x', state: 'ready' });
     expect(await runJob({ db, client: fakeClient([]) }, bad)).toBe('failed');
+  });
+
+  it('まとめ方を変えたら（COMPANY_V）、古いまとめの会社を一度ずつまとめ直す依頼を足す', async () => {
+    await db.doc('kbCompanies/1').set({ v: 1, state: 'done' });
+    await db.doc('kbCompanies/2').set({ v: 2, state: 'done' });
+    await ingestSweep({ db, client: fakeClient([]), get: async () => PAGE });
+    await ingestSweep({ db, client: fakeClient([]), get: async () => PAGE });
+    const jobs = (await db.collection('kbJobs').get()).docs.map((d) => d.data());
+    expect(jobs).toMatchObject([{ type: 'company', id: '1', by: 'upgrade' }]);
   });
 
   it('同時に2回動いても1回分だけ', async () => {

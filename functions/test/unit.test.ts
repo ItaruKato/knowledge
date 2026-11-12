@@ -87,6 +87,12 @@ describe('company', () => {
         recent: [],
         angles: [],
         fits: [],
+        businesses: ['「SNS マーケティング支援」', 'SNSマーケティング支援', 'x'],
+        capital: [
+          { counterpart: 'みずほ銀行', relation: '出資を受けた', date: '2026-11-01', articleId: '2.9' },
+          { counterpart: 'どこか', relation: '買収した', date: '2026-01-01', articleId: 'nope' },
+          { counterpart: ' ', relation: '合併', date: '2026-01-01', articleId: '1.9' },
+        ],
         events: [
           { date: '2026-10-01', type: '資金調達', title: 'b', amount: '', counterpart: '', articleId: '2.9' },
           { date: '2026-01-01', type: 'M&A', title: 'a', amount: '', counterpart: '', articleId: '1.9' },
@@ -96,10 +102,14 @@ describe('company', () => {
       new Set(['1.9', '2.9']),
     );
     expect(t.events.map((e) => e.title)).toEqual(['a', 'b']);
+    // ビジネス名はそろえて重なりを除き、2文字未満は捨てる。資本関係は根拠の記事と相手があるものだけ
+    expect(t.businesses).toEqual(['SNSマーケティング支援']);
+    expect(t.capital).toEqual([{ counterpart: 'みずほ銀行', relation: '出資を受けた', date: '2026-11-01', articleId: '2.9' }]);
   });
   it('材料に記事ID・日付・タイトルとメモを入れる', () => {
-    const c = companyContent({ name: 'A社', info: '', articles: [{ id: '1.9', t: 'タイトル', p: '2026-11-01T10:00:00+09:00' }], reads: [{ id: '1.9', title: 't', caseTitle: '', summary: '要約', memo: 'メモ', facts: '' }], longlist: '' });
+    const c = companyContent({ name: 'A社', info: '', businesses: ['会計SaaS'], articles: [{ id: '1.9', t: 'タイトル', p: '2026-11-01T10:00:00+09:00' }], reads: [{ id: '1.9', title: 't', caseTitle: '', summary: '要約', memo: 'メモ', facts: '' }], longlist: '' });
     expect(c).toContain('1.9｜2026-11-01｜タイトル');
     expect(c).toContain('メモ: メモ');
+    expect(c).toContain('いまあるビジネス:\n- 会計SaaS');
   });
 });

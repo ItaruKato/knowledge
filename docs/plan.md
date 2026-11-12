@@ -33,7 +33,7 @@
 | 画面 | パソコンとスマホ半々（どちらでも使いやすく） |
 | テーマのまとめ直し | 記事が増えて似たテーマがたまったら、AI がまとめ直す仕組みを足す（未着手） |
 | HP・Web 検索 | 費用対効果のため、本人が指示したときだけ（会社ページの「HP から肉付け」ボタン。依頼に manual: true）。自動では依頼しない（2026-11-12 本人の決定） |
-| 知識のつながり | 丸は会社＋テーマ＋業界。共通点で結び、⑤で意味の近さも足す。3D と 2D を切り替え。押した丸：周りを光らせる・横に要点・会社ページ/ネタ帳へ・中心に広げる（2026-11-12 本人の決定） |
+| 知識のつながり | 会社と会社を直接結ぶのは資本関係だけ。ビジネスが似ている会社は 会社─ビジネス─会社 で結ぶ（2026-11-12 本人の決定）。テーマ・業界の丸も出せる。⑤で意味の近さも足す。3D と 2D を切り替え。押した丸：周りを光らせる・横に要点・会社ページ/ネタ帳へ・中心に広げる（2026-11-12 本人の決定） |
 | まだ決めていない | ネタ1件の形（案：トーク例＋根拠の記事＋数字のカード）、質問の履歴（案：残す）、デイリー・ウィークリーの中身の細部 |
 
 ## 構成
@@ -42,9 +42,12 @@
   - いまは kbArticles を一度に読み、絞り込みは画面の中で行う（src/lib/kb.ts）。全記事に広げるときは Firestore の問い合わせに移す
   - 本文は kbBodies に分けてある（一覧では読まない）
   - 会社名の表示（src/lib/names.ts）：正式名（法人格を含む）が分かれば PR TIMES の会社名の代わりに出す。1. 会社 HP の正式名（companies.web.officialName。法人格を含み、PR TIMES の名前と同じ会社と分かるとき）→ 2. gBizINFO の正式名（companies.gbiz.name）→ 3. PR TIMES の会社名。台帳の name は書き換えない。会社ページでは PR TIMES での名前も小さく添える
-  - 知識のつながり（v0.9、src/lib/graph.ts・src/pages/GraphPage.tsx）：会社・テーマ・業界の丸と線。3D（3d-force-graph／three.js）と 2D（force-graph）を切り替え（どちらにしたかは端末に覚える）。3D の部品は大きいので、このタブを開いたときだけ読み込む
-    - 線：会社─テーマ、会社─業界、似ている会社どうし（共通点の点数：同じテーマ3・同じ業界2・同じ課題/狙い1・同じ規模/段階1。3点以上、1社6本まで。理由つき）。追加の AI は使わない（本人の決定）。⑤で「意味の近さ」の線を足す
-    - 丸を押す：つながる丸だけ光らせ、横に要点（会社：読んだ記事・トーク例・似ている会社と理由・テーマ／テーマ・業界：つながる会社）、会社ページ・ネタ帳へ、「ここを中心に広げる」（2歩先まで）。検索窓の言葉に当てはまる丸も光らせる
+  - 知識のつながり（v0.9〜0.10、src/lib/graph.ts・src/pages/GraphPage.tsx）：3D（3d-force-graph／three.js）と 2D（force-graph）を切り替え（どちらにしたかは端末に覚える）。3D の部品は大きいので、このタブを開いたときだけ読み込む
+    - **会社と会社を直接結ぶ線は資本関係だけ**（本人の決定）。会社の AI のまとめの capital（出資・買収・子会社化・親会社/子会社・資本業務提携・合併・事業譲渡）。向きは「出資・買収する側 → される側」にそろえ、両方の会社のまとめに出てきた同じ関係は1本にする。相手先が読んだ会社ならその丸、いなければ相手先の丸（灰色）を足す
+    - **ビジネスが似ている会社は 会社 ─ ビジネス ─ 会社**（本人の決定）。会社の AI のまとめの businesses（1社1〜3個。いまあるビジネス名に合えば同じ名前を使う）
+    - テーマ（ネタ帳）・業界の丸も出せる（表示の切り替えあり。業界は最初は出さない）
+    - 「似ている会社」は線にせず、押した会社の横に点数と理由で出す（同じビジネス3・同じテーマ3・同じ業界2・同じ課題/狙い1・同じ規模/段階1、3点以上）。追加の AI は使わない。⑤で意味の近さも足す
+    - 丸を押す：つながる丸だけ光らせ、横に要点（読んだ記事・トーク例・ビジネス・資本関係と根拠の記事・似ている会社）、会社ページ・ネタ帳へ、「ここを中心に広げる」（2歩先まで）。検索窓の言葉に当てはまる丸も光らせる
   - 検索窓（v0.8）：タブの下に1つ。言葉はタブを切り替えても残り、× ボタン（または Esc）で一度に消せる。読んだ記事・先行事例・ネタ帳（テーマとネタ）・会社の一覧・会社ページの PR TIMES の記事を絞る。正式な会社名でも探せる
   - 見た目（v0.7）：色の名前は Watcher とそろえ、文字と背景の差を大きくした（補足の文字も 4.5:1 以上）。カードは「課題・狙い」「トーク例」「自分のメモ」に見出しを付け、業界（青）・規模/段階（緑）・課題（黄）で色を分ける
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
@@ -54,6 +57,7 @@
   - 使った量と費用の見積もりは `kbMeta/usage_{YYYYMMDD}`（ウィークリーで報告する）
   - 記事を整理したら、その会社のまとめの依頼（`kbJobs`、type company）を足す。HP の読み込みは自動では依頼しない（本人がボタンで指示したときだけ、画面が `webQueue/{会社ID}` に manual: true で依頼する。処理は prtimes-inbox の companyWebSweep）
   - `kbJobRun`（Firestore の kbJobs に依頼が書かれた瞬間に動く。外から呼べる入口ではない）：会社ページの AI のまとめ（`kbCompanies`）。材料が同じならまとめ直さない（画面の「まとめ直す」は作り直す）。届かなかった依頼は kbIngest が拾い、1日たった依頼は消す
+  - 会社のまとめ v2（COMPANY_V=2）：ビジネス（businesses）と資本関係（capital：相手・関係・日付・根拠の記事ID）を足した。COMPANY_V を上げると、kbIngest が古いまとめの会社を1回に5社ずつまとめ直す依頼を足す（upgradeAskedV で二重に頼まない）
   - 会社のまとめの材料：台帳（companies・companyArticles のタイトルと日付、300件まで）、読んだ記事の整理とメモ、Long List（longlist/{会社ID} があれば）。出来事（調達・M&A など）は根拠の記事IDつき。一覧にないIDは捨てる
 - バージョン：画面の上と下に `v{package.json の version} · 最終更新 {ビルドした日時}`（GitHub Actions のビルドではコミット番号も）。機能を足したら package.json の version を上げる（0.x の2つ目の数字）。各カードには AI の整理の版（`ANALYSIS_V`）と整理した日時
 - 権限（本人が 2026-11-12 に Cloud Shell で付けた。Firestore のトリガー kbJobRun に必要）：Pub/Sub のサービスエージェントに `roles/iam.serviceAccountTokenCreator`、既定のコンピュートアカウントに `roles/run.invoker`・`roles/eventarc.eventReceiver`。どれも Google の内部アカウントで、外から呼べるようにはしていない
@@ -79,13 +83,14 @@
 - [x] 見やすさの調整（配色・文字の大きさ・カードの見出し）と、正式な会社名での表示（v0.7）
 - [x] HP・Web 検索は指示したときだけに。全部の画面で使える検索窓（× で一度に消す・Esc でも消す）（v0.8）
 - [x] 知識のつながり（3D / 2D、似ている会社と理由、押した丸の周りを光らせる・中心に広げる）（v0.9）
+- [x] つながりの決まりを変更：直接の線は資本関係だけ、似たビジネスは ビジネスの丸を間にはさむ（会社のまとめ v2 にビジネスと資本関係）（v0.10）
 - [ ] 全記事と検索（2026-09-01 以降）→ 質問 → レポート → MCP → パートナー
 
 ## データの形（自分のコレクション）
 - `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error
 - `kbBodies/{記事ID}`：body（記事ページの本文、最大2万字。取れなければ冒頭）、from（page / lead）、at
 - `kbThemes/{テーマ名}`：name、count（入っている記事の数）、service、description、by（ai）、createdAt・updatedAt
-- `kbCompanies/{会社ID}`：v、id、name、ai（summary・recent・events[date・type・title・amount・counterpart・articleId]・angles・fits）、model、at、inputHash、articleCount・readCount、state（working / done / failed）、error
+- `kbCompanies/{会社ID}`：v、id、name、ai（summary・recent・events[date・type・title・amount・counterpart・articleId]・angles・fits・businesses・capital[counterpart・relation・date・articleId]）、upgradeAskedV、model、at、inputHash、articleCount・readCount、state（working / done / failed）、error
 - `kbJobs/{自動ID}`：type（company）、id、redo、state（ready / working / done / failed）、at、result、error、by（ingest なら関数から）
 - `kbMeta/ingest`：cursor（handoff の updatedAt と記事ID）、lastRunAt、last（回ごとの件数）、total
 - `kbMeta/usage_{YYYYMMDD}`：モデルごとのトークン数・requests、usd（見積もり）、by（用途ごとの回数）

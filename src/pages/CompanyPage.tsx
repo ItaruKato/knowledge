@@ -114,6 +114,9 @@ interface KbCompany {
     events: { date: string; type: string; title: string; amount: string; counterpart: string; articleId: string }[];
     angles: string[];
     fits: { service: string; reason: string }[];
+    /** v2 から：ビジネス（事業）と資本関係 */
+    businesses?: string[];
+    capital?: { counterpart: string; relation: string; date: string; articleId: string }[];
   };
 }
 
@@ -254,6 +257,15 @@ export function CompanyPage({ data, cid, q }: { data: KbData; cid: string; q: st
             {ai && (
               <>
                 <p className="sum">{ai.summary}</p>
+                {(ai.businesses ?? []).length > 0 && (
+                  <div className="chips">
+                    {ai.businesses!.map((b) => (
+                      <a key={b} className="chip biz" {...linkProps('/graph')} title="つながりの図で、同じビジネスの会社を見る">
+                        {b}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {ai.angles.length > 0 && (
                   <>
                     <b className="lbl">営業の切り口</b>
@@ -290,6 +302,26 @@ export function CompanyPage({ data, cid, q }: { data: KbData; cid: string; q: st
               </>
             )}
           </section>
+
+          {(ai?.capital ?? []).length > 0 && (
+            <section className="card">
+              <h3>資本関係</h3>
+              <ol className="events">
+                {ai!.capital!.map((c, i) => (
+                  <li key={i}>
+                    <span className="date">{c.date}</span>
+                    <span className="badge cap">{c.relation}</span>
+                    <span>
+                      <b>{c.counterpart}</b>{' '}
+                      <a className="src" href={articleUrl(c.articleId)} target="_blank" rel="noreferrer">
+                        根拠の記事
+                      </a>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
 
           <section className="card">
             <h3>調達・M&A などの履歴</h3>

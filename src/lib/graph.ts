@@ -1,67 +1,112 @@
-import type { KbArticle, KbTheme } from '../types';
+import type { KbArticle, KbCompanyInfo, KbTheme } from '../types';
 import { matchesText, SERVICES } from './kb';
+import { coreName } from './names';
 
 /**
- * 知識のつながり（会社・テーマ・業界の丸と線）。追加の AI は使わず、読んだ記事の整理の共通点から作る（本人の決定）。
- * - 会社 ─ テーマ：その会社の記事がそのテーマに入っている
- * - 会社 ─ 業界：AI の整理の業界（業界タグが台帳にできたら切り替える）
- * - 会社 ─ 会社（似ている）：共通点の点数が SIMILAR_MIN 以上。同じテーマ 3点、同じ業界 2点、同じ課題・狙い 1点、同じ規模・段階 1点
- * あとで「意味の近さ」（Vertex AI で記事を数値にしたもの）の線を足す
+ * 知識のつながり（本人の決定 2026-11-12）。
+ * - 会社と会社を直接結ぶ線は「資本関係」だけ（出資・買収・子会社化・資本業務提携・合併など。会社の AI のまとめの capital）
+ * - ビジネスが似ている会社は「会社 ─ ビジネス ─ 会社」で結ぶ（会社の AI のまとめの businesses）
+ * - あわせて、会社 ─ テーマ（ネタ帳）、会社 ─ 業界 の丸と線も出せる
+ * - 「似ている会社」の一覧は線にせず、共通点の点数（同じビジネス3・同じテーマ3・同じ業界2・同じ課題/狙い1・同じ規模/段階1）で横に出す
+ * 追加の AI は使わない。⑤で「意味の近さ」も足す
  */
 
-export type GKind = 'company' | 'theme' | 'industry';
+export type GKind = 'company' | 'business' | 'theme' | 'industry';
 export interface GNode {
   id: string;
   kind: GKind;
   label: string;
-  /** 丸の大きさ（記事の数・★） */
+  /** 丸の大きさ */
   val: number;
   /** テーマのサービス（色分け） */
   service?: string;
   cid?: string;
+  /** 読んでいない会社（資本関係の相手先として出てくるだけの会社） */
+  external?: boolean;
   count: number;
 }
-export type GLinkKind = 'theme' | 'industry' | 'similar';
+export type GLinkKind = 'business' | 'theme' | 'industry' | 'capital';
 export interface GLink {
   source: string;
   target: string;
   kind: GLinkKind;
-  /** 似ている会社どうしの点数と理由 */
-  score?: number;
-  reasons?: string[];
+  /** 資本関係の種類（出資・買収・子会社化・親会社・子会社 は source → target の向き。資本業務提携・合併・事業譲渡 は向きなし） */
+  relation?: string;
+  directed?: boolean;
+  date?: string;
+  articleId?: string;
+}
+
+/**
+ * 資本関係を「出資・買収する側 → される側」の向きにそろえる。
+ * AI のまとめの relation は、その会社から見た言い方（例：出資を受けた）なので、in なら相手 → 自分、out なら自分 → 相手。
+ */
+const DIRECTION: Record<string, [dir: 'in' | 'out' | 'none', label: string]> = {
+  出資を受けた: ['in', '出資'],
+  出資した: ['out', '出資'],
+  買収した: ['out', '買収'],
+  買収された: ['in', '買収'],
+  子会社化した: ['out', '子会社化'],
+  子会社になった: ['in', '子会社化'],
+  親会社: ['in', '親会社・子会社'],
+  '子会社・グループ会社': ['out', '親会社・子会社'],
+  資本業務提携: ['none', '資本業務提携'],
+  合併: ['none', '合併'],
+  事業を譲り受けた: ['none', '事業譲渡'],
+  事業を譲渡した: ['none', '事業譲渡'],
+};
+/** 向きのある関係を、その会社の側から読んだ言い方 */
+const AS_SOURCE: Record<string, string> = { 出資: '出資した', 買収: '買収した', 子会社化: '子会社化した', '親会社・子会社': '子会社・グループ会社' };
+const AS_TARGET: Record<string, string> = { 出資: '出資を受けた', 買収: '買収された', 子会社化: '子会社になった', '親会社・子会社': '親会社' };
+export interface Similar {
+  id: string;
+  score: number;
+  reasons: string[];
 }
 export interface Graph {
   nodes: GNode[];
   links: GLink[];
+  /** 会社の丸 id → 似ている会社（点数の高い順） */
+  similar: Map<string, Similar[]>;
 }
 
 export const SIMILAR_MIN = 3;
-/** 1社あたり、似ている会社の線は多い順にこの数まで（線が多すぎて見えなくならないように） */
-export const SIMILAR_PER_COMPANY = 6;
+export const SIMILAR_MAX = 10;
 
 interface CompanyAgg {
   cid: string;
   name: string;
+  businesses: Set<string>;
   themes: Set<string>;
   industries: Set<string>;
   challenges: Set<string>;
   stages: Set<string>;
-  articles: KbArticle[];
+  articles: number;
   stars: number;
 }
 
-export function aggregate(articles: KbArticle[], names: Record<string, string>): Map<string, CompanyAgg> {
+export function aggregate(articles: KbArticle[], names: Record<string, string>, companies: Record<string, KbCompanyInfo> = {}): Map<string, CompanyAgg> {
   const m = new Map<string, CompanyAgg>();
   for (const a of articles) {
     if (!a.kb || !a.companyId) continue;
     const c =
       m.get(a.companyId) ??
-      { cid: a.companyId, name: names[a.companyId] ?? a.company, themes: new Set(), industries: new Set(), challenges: new Set(), stages: new Set(), articles: [], stars: 0 };
+      ({
+        cid: a.companyId,
+        name: names[a.companyId] ?? a.company,
+        businesses: new Set(companies[a.companyId]?.businesses ?? []),
+        themes: new Set(),
+        industries: new Set(),
+        challenges: new Set(),
+        stages: new Set(),
+        articles: 0,
+        stars: 0,
+      } as CompanyAgg);
     for (const t of a.themes ?? []) c.themes.add(t);
     if (a.kb.industry) c.industries.add(a.kb.industry);
     for (const x of a.kb.challenges ?? []) if (x !== 'その他') c.challenges.add(x);
     if (a.kb.stage && a.kb.stage !== '不明') c.stages.add(a.kb.stage);
-    c.articles.push(a);
+    c.articles++;
     c.stars = Math.max(c.stars, a.stars ?? 0);
     m.set(a.companyId, c);
   }
@@ -71,74 +116,126 @@ export function aggregate(articles: KbArticle[], names: Record<string, string>):
 /** 2社の共通点の点数と理由 */
 export function similarity(a: CompanyAgg, b: CompanyAgg): { score: number; reasons: string[] } {
   const both = (x: Set<string>, y: Set<string>) => [...x].filter((v) => y.has(v));
+  const bz = both(a.businesses, b.businesses);
   const t = both(a.themes, b.themes);
   const i = both(a.industries, b.industries);
   const c = both(a.challenges, b.challenges);
   const s = both(a.stages, b.stages);
   const reasons = [
+    ...bz.map((v) => `同じビジネス「${v}」`),
     ...t.map((v) => `同じテーマ「${v}」`),
     ...i.map((v) => `同じ業界「${v}」`),
     ...c.map((v) => `同じ課題・狙い「${v}」`),
     ...s.map((v) => `同じ規模・段階「${v}」`),
   ];
-  return { score: t.length * 3 + i.length * 2 + c.length + s.length, reasons };
+  return { score: bz.length * 3 + t.length * 3 + i.length * 2 + c.length + s.length, reasons };
 }
 
-export function buildGraph(articles: KbArticle[], names: Record<string, string>, themes: KbTheme[], opts: { similar?: boolean; industries?: boolean } = {}): Graph {
-  const { similar = true, industries = true } = opts;
-  const agg = aggregate(articles, names);
+export interface GraphOpts {
+  businesses?: boolean;
+  themes?: boolean;
+  industries?: boolean;
+  capital?: boolean;
+}
+
+export function buildGraph(
+  articles: KbArticle[],
+  names: Record<string, string>,
+  themes: KbTheme[],
+  companies: Record<string, KbCompanyInfo> = {},
+  opts: GraphOpts = {},
+): Graph {
+  const { businesses = true, themes: showThemes = true, industries = true, capital = true } = opts;
+  const agg = aggregate(articles, names, companies);
   const service = new Map(themes.map((t) => [t.name, t.service]));
   const nodes = new Map<string, GNode>();
   const links: GLink[] = [];
-  const add = (n: GNode) => {
+  const hub = (n: GNode) => {
     const prev = nodes.get(n.id);
     if (prev) {
-      prev.count += n.count;
-      prev.val = 1 + prev.count;
+      prev.count++;
+      prev.val = 2 + prev.count;
     } else nodes.set(n.id, n);
   };
+
   for (const c of agg.values()) {
-    add({ id: `c:${c.cid}`, kind: 'company', label: c.name, val: 2 + c.articles.length + c.stars, cid: c.cid, count: c.articles.length });
-    for (const t of c.themes) {
-      add({ id: `t:${t}`, kind: 'theme', label: t, val: 2, service: service.get(t) ?? 'その他', count: 1 });
-      links.push({ source: `c:${c.cid}`, target: `t:${t}`, kind: 'theme' });
-    }
+    nodes.set(`c:${c.cid}`, { id: `c:${c.cid}`, kind: 'company', label: c.name, val: 2 + c.articles + c.stars, cid: c.cid, count: c.articles });
+    if (businesses)
+      for (const b of c.businesses) {
+        hub({ id: `b:${b}`, kind: 'business', label: b, val: 3, count: 1 });
+        links.push({ source: `c:${c.cid}`, target: `b:${b}`, kind: 'business' });
+      }
+    if (showThemes)
+      for (const t of c.themes) {
+        hub({ id: `t:${t}`, kind: 'theme', label: t, val: 3, service: service.get(t) ?? 'その他', count: 1 });
+        links.push({ source: `c:${c.cid}`, target: `t:${t}`, kind: 'theme' });
+      }
     if (industries)
       for (const i of c.industries) {
-        add({ id: `i:${i}`, kind: 'industry', label: i, val: 2, count: 1 });
+        hub({ id: `i:${i}`, kind: 'industry', label: i, val: 3, count: 1 });
         links.push({ source: `c:${c.cid}`, target: `i:${i}`, kind: 'industry' });
       }
   }
-  if (similar) {
-    const list = [...agg.values()];
-    const best = new Map<string, { other: string; score: number; reasons: string[] }[]>();
-    for (let x = 0; x < list.length; x++)
-      for (let y = x + 1; y < list.length; y++) {
-        const r = similarity(list[x], list[y]);
-        if (r.score < SIMILAR_MIN) continue;
-        for (const [p, q] of [
-          [list[x].cid, list[y].cid],
-          [list[y].cid, list[x].cid],
-        ])
-          best.set(p, [...(best.get(p) ?? []), { other: q, ...r }]);
+
+  // 資本関係：相手先が読んだ会社なら、その会社の丸に直接つなぐ。いなければ相手先の丸を足す
+  if (capital) {
+    const byCore = new Map<string, string>();
+    for (const c of agg.values()) {
+      for (const n of [c.name, articles.find((a) => a.companyId === c.cid)?.company ?? '']) {
+        const k = coreName(n);
+        if (k.length >= 2) byCore.set(k, `c:${c.cid}`);
       }
+    }
+    const find = (name: string) => {
+      const k = coreName(name);
+      if (k.length < 2) return null;
+      if (byCore.has(k)) return byCore.get(k)!;
+      for (const [core, id] of byCore) if (core.length >= 3 && k.length >= 3 && (core.includes(k) || k.includes(core))) return id;
+      return null;
+    };
     const seen = new Set<string>();
-    for (const [cid, arr] of best) {
-      for (const r of arr.sort((p, q) => q.score - p.score).slice(0, SIMILAR_PER_COMPANY)) {
-        const key = [cid, r.other].sort().join('|');
+    for (const c of agg.values()) {
+      for (const r of companies[c.cid]?.capital ?? []) {
+        const from = `c:${c.cid}`;
+        let to = find(r.counterpart);
+        if (!to) {
+          to = `x:${coreName(r.counterpart)}`;
+          if (!nodes.has(to)) nodes.set(to, { id: to, kind: 'company', label: r.counterpart, val: 2, external: true, count: 0 });
+        }
+        if (to === from) continue;
+        const [dir, label] = DIRECTION[r.relation] ?? ['none', r.relation];
+        const [src, dst] = dir === 'in' ? [to, from] : [from, to];
+        // 両方の会社のまとめに同じ関係が出てきても1本にする
+        const key = (dir === 'none' ? [src, dst].sort().join('|') : `${src}>${dst}`) + label;
         if (seen.has(key)) continue;
         seen.add(key);
-        links.push({ source: `c:${cid}`, target: `c:${r.other}`, kind: 'similar', score: r.score, reasons: r.reasons });
+        links.push({ source: src, target: dst, kind: 'capital', relation: label, directed: dir !== 'none', date: r.date, articleId: r.articleId });
       }
     }
   }
-  return { nodes: [...nodes.values()], links };
+
+  // 似ている会社（線にはしない）
+  const list = [...agg.values()];
+  const similar = new Map<string, Similar[]>();
+  for (let x = 0; x < list.length; x++)
+    for (let y = x + 1; y < list.length; y++) {
+      const r = similarity(list[x], list[y]);
+      if (r.score < SIMILAR_MIN) continue;
+      for (const [p, q] of [
+        [list[x].cid, list[y].cid],
+        [list[y].cid, list[x].cid],
+      ])
+        similar.set(`c:${p}`, [...(similar.get(`c:${p}`) ?? []), { id: `c:${q}`, ...r }]);
+    }
+  for (const [k, v] of similar) similar.set(k, v.sort((a, b) => b.score - a.score).slice(0, SIMILAR_MAX));
+
+  return { nodes: [...nodes.values()], links, similar };
 }
 
 const endId = (v: unknown) => (typeof v === 'string' ? v : (v as { id: string }).id);
 
 /** 丸 id とじかにつながる丸の id（自分も含む） */
-export function neighbors(g: Graph, id: string): Set<string> {
+export function neighbors(g: Pick<Graph, 'links'>, id: string): Set<string> {
   const out = new Set([id]);
   for (const l of g.links) {
     const s = endId(l.source);
@@ -160,7 +257,25 @@ export function around(g: Graph, id: string, steps = 2): Graph {
   return {
     nodes: g.nodes.filter((n) => keep.has(n.id)),
     links: g.links.filter((l) => keep.has(endId(l.source)) && keep.has(endId(l.target))),
+    similar: g.similar,
   };
+}
+
+/** 資本関係（その会社の側から読んだ言い方：出資した／出資を受けた など） */
+export function capitalOf(g: Pick<Graph, 'links'>, id: string): { other: string; relation: string; date: string; articleId?: string }[] {
+  return g.links
+    .filter((l) => l.kind === 'capital' && (endId(l.source) === id || endId(l.target) === id))
+    .map((l) => {
+      const isSource = endId(l.source) === id;
+      const r = l.relation ?? '';
+      return {
+        other: isSource ? endId(l.target) : endId(l.source),
+        relation: l.directed ? ((isSource ? AS_SOURCE[r] : AS_TARGET[r]) ?? r) : r,
+        date: l.date ?? '',
+        articleId: l.articleId,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** 検索窓の言葉に当てはまる丸（会社は記事の中身でも探す） */
@@ -169,14 +284,6 @@ export function matchingNodes(g: Graph, q: string, articles: KbArticle[], names:
   if (!w) return null;
   const hitCompanies = new Set(articles.filter((a) => matchesText(a, q, names[a.companyId])).map((a) => `c:${a.companyId}`));
   return new Set(g.nodes.filter((n) => hitCompanies.has(n.id) || n.label.normalize('NFKC').toLowerCase().includes(w)).map((n) => n.id));
-}
-
-/** 似ている会社（点数の高い順）と理由 */
-export function similarOf(g: Graph, id: string): { id: string; score: number; reasons: string[] }[] {
-  return g.links
-    .filter((l) => l.kind === 'similar' && (endId(l.source) === id || endId(l.target) === id))
-    .map((l) => ({ id: endId(l.source) === id ? endId(l.target) : endId(l.source), score: l.score ?? 0, reasons: l.reasons ?? [] }))
-    .sort((a, b) => b.score - a.score);
 }
 
 export const SERVICE_KEYS = [...SERVICES, 'その他'] as const;

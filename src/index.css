@@ -320,3 +320,6 @@ button.chip:hover { border-color: var(--accent); color: var(--accent); backgroun
   .graphpanel { max-height: none; min-height: 0; }
   .graph .toolbar .meta { margin-left: 0; flex-basis: 100%; }
 }
+.legend i.bar { width: 16px; height: 4px; border-radius: 2px; vertical-align: 3px; }
+.badge.cap { background: transparent; border-color: currentColor; color: var(--drop); }
+.chip.biz { border-color: var(--amber); color: var(--amber); }
