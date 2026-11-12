@@ -323,3 +323,8 @@ button.chip:hover { border-color: var(--accent); color: var(--accent); backgroun
 .legend i.bar { width: 16px; height: 4px; border-radius: 2px; vertical-align: 3px; }
 .badge.cap { background: transparent; border-color: currentColor; color: var(--drop); }
 .chip.biz { border-color: var(--amber); color: var(--amber); }
+/* 図の右上の「全体を表示」（拡大・回転を元に戻す） */
+.graphwrap { position: relative; min-width: 0; }
+.graphreset { position: absolute; top: 12px; right: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow); }
+.graphreset svg { width: 16px; height: 16px; }
+.graphreset:hover { border-color: var(--accent); color: var(--accent); }

@@ -225,6 +225,21 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
     if (selected && matchMedia('(max-width: 900px)').matches) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [selected]);
 
+  /** 拡大・回転・移動したあとに、最初の「全体が収まる表示」に戻す（押した丸の光りも消す） */
+  const resetView = () => {
+    const gr = graphRef.current as unknown as Record<string, (...a: unknown[]) => unknown> | null;
+    if (!gr) return;
+    setSelected(null);
+    if (mode === '3d') {
+      // 正面から見る向きに戻してから、全体を収める
+      const cam = gr.cameraPosition() as { x: number; y: number; z: number };
+      gr.cameraPosition({ x: 0, y: 0, z: Math.max(200, Math.hypot(cam.x, cam.y, cam.z)) }, { x: 0, y: 0, z: 0 }, 500);
+      setTimeout(() => gr.zoomToFit(600, 50), 520);
+    } else {
+      gr.zoomToFit(600, 50);
+    }
+  };
+
   const setModeSaved = (m: Mode) => {
     setMode(m);
     try {
@@ -276,7 +291,15 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
         </span>
       </div>
       <div className="graphgrid">
-        <div className="graphbox" ref={boxRef} aria-label="知識のつながりの図。丸を押すと横に要点が出ます" />
+        <div className="graphwrap">
+          <div className="graphbox" ref={boxRef} aria-label="知識のつながりの図。丸を押すと横に要点が出ます" />
+          <button type="button" className="graphreset" onClick={resetView} title="拡大・回転を元に戻し、全体を表示します">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 8V3h5M17 12v5h-5M3 3l5 5M17 17l-5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            全体を表示
+          </button>
+        </div>
         <aside className="card graphpanel" ref={panelRef}>
           {!node ? (
             <>
@@ -285,7 +308,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
                 会社と会社を直接結ぶ赤い線は<b>資本関係</b>（出資・買収・子会社化・資本業務提携など。2D の矢印は、出資・買収する側 → される側）だけです。ビジネスが似ている会社は、オレンジの<b>ビジネス</b>の丸を間にはさんでつながります。丸を押すと、つながる丸だけが光り、ここに要点が出ます。
               </p>
               {noBusiness && <p className="note">ビジネスと資本関係は、会社の AI のまとめを作り直すと出てきます（自動で1社ずつ進めています）。</p>}
-              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}何もない所を押すと元に戻ります。</p>
+              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}何もない所を押すと光りが消え、右上の「全体を表示」で拡大・回転も元に戻ります。</p>
               <b className="lbl">丸の色</b>
               <ul className="legend">
                 <li>
