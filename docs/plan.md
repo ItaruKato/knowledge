@@ -48,6 +48,7 @@
   - `kbJobRun`（Firestore の kbJobs に依頼が書かれた瞬間に動く。外から呼べる入口ではない）：会社ページの AI のまとめ（`kbCompanies`）。材料が同じならまとめ直さない（画面の「まとめ直す」は作り直す）。届かなかった依頼は kbIngest が拾い、1日たった依頼は消す
   - 会社のまとめの材料：台帳（companies・companyArticles のタイトルと日付、300件まで）、読んだ記事の整理とメモ、Long List（longlist/{会社ID} があれば）。出来事（調達・M&A など）は根拠の記事IDつき。一覧にないIDは捨てる
 - バージョン：画面の上と下に `v{package.json の version} · 最終更新 {ビルドした日時}`（GitHub Actions のビルドではコミット番号も）。機能を足したら package.json の version を上げる（0.x の2つ目の数字）。各カードには AI の整理の版（`ANALYSIS_V`）と整理した日時
+- 権限（本人が 2026-11-12 に Cloud Shell で付けた。Firestore のトリガー kbJobRun に必要）：Pub/Sub のサービスエージェントに `roles/iam.serviceAccountTokenCreator`、既定のコンピュートアカウントに `roles/run.invoker`・`roles/eventarc.eventReceiver`。どれも Google の内部アカウントで、外から呼べるようにはしていない
 - テスト：`npm test`（画面）、`cd functions && npm test`（関数）、`cd functions && npm run test:emulator`（Firestore エミュレーター。Java が必要）
 - 自分のデータ：`kbArticles`・`kbCompanies`・`kbThemes`・`kbReports`・`kbMeta`（関数だけが書く）、`kbJobs`（画面からの依頼）、`kbConfig`（画面の設定）。ルールは prtimes-inbox の `firestore.rules` にある。新しいコレクションが要るときは、prtimes-inbox に足してから使う
 
