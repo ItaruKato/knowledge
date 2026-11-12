@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { collection, getCountFromServer, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Login } from './components/Login';
 import { isOwner } from './lib/owner';
@@ -54,19 +54,47 @@ function ArticleCard({ a }: { a: KbArticle }) {
   );
 }
 
+interface IngestStatus {
+  startedAt?: string;
+  lastRunAt?: string;
+  lastError?: string | null;
+  lastErrorAt?: string;
+  last?: Record<string, number>;
+}
+
+const fmtTime = (s?: string) => (s ? new Date(s).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+
+/** 取り込み（10分ごと）の様子。うまく動いていないときに気づけるように */
+function StatusLine({ s }: { s: IngestStatus }) {
+  const running = s.startedAt && (!s.lastRunAt || s.startedAt > s.lastRunAt) && Date.now() - new Date(s.startedAt).getTime() < 10 * 60e3;
+  return (
+    <p className="note">
+      {!s.startedAt && !s.lastRunAt && !s.lastError
+        ? '取り込みはまだ一度も動いていません（10分ごとに動きます）。'
+        : running
+          ? `取り込み中です（${fmtTime(s.startedAt)} から。1件に1〜2分かかります）。`
+          : `最後の取り込み：${fmtTime(s.lastRunAt)}${s.last ? `（整理 ${s.last.analyzed ?? 0}・更新 ${s.last.synced ?? 0}・失敗 ${s.last.failed ?? 0}）` : ''}。10分ごとに動きます。`}
+      {s.lastError && <span className="err"> 止まりました（{fmtTime(s.lastErrorAt)}）：{s.lastError}</span>}
+    </p>
+  );
+}
+
 function Home({ user }: { user: User }) {
   const [counts, setCounts] = useState<{ handoff: number; kb: number; themes: number } | null>(null);
   const [items, setItems] = useState<KbArticle[]>([]);
+  const [status, setStatus] = useState<IngestStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
       try {
-        const [h, k, t, snap] = await Promise.all([
+        const [h, k, t, snap, st] = await Promise.all([
           getCountFromServer(collection(db, 'handoff')),
           getCountFromServer(query(collection(db, 'kbArticles'), where('state', '==', 'done'))),
           getCountFromServer(collection(db, 'kbThemes')),
           getDocs(query(collection(db, 'kbArticles'), orderBy('readAt', 'desc'), limit(50))),
+          getDoc(doc(db, 'kbMeta', 'ingest')),
         ]);
+        setStatus((st.data() as IngestStatus | undefined) ?? {});
         setCounts({ handoff: h.data().count, kb: k.data().count, themes: t.data().count });
         setItems(snap.docs.map((d) => ({ ...(d.data() as KbArticle), id: d.id })));
       } catch (e) {
@@ -101,9 +129,7 @@ function Home({ user }: { user: User }) {
           </div>
         </section>
       )}
-      {counts && counts.handoff > counts.kb && (
-        <p className="note">Watcher で読了にした記事は、10分以内にここへ取り込まれ、AI が整理します。</p>
-      )}
+      {status && <StatusLine s={status} />}
       {items.map((a) => (
         <ArticleCard key={a.id} a={a} />
       ))}

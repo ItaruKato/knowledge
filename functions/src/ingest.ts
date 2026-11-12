@@ -226,10 +226,12 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
 /** handoff を前回の続きから読んで取り込む（10分ごと）。失敗した記事は次の回にもう一度（3回まで） */
 export async function ingestSweep(deps: IngestDeps) {
   const { db } = deps;
+  const metaRef = db.collection('kbMeta').doc('ingest');
   const r = await withLease(db, 'ingest', 540_000, async () => {
     const until = Date.now() + (deps.budgetMs ?? 400_000);
-    const metaRef = db.collection('kbMeta').doc('ingest');
     const meta = (await metaRef.get()).data() ?? {};
+    // 画面に「取り込み中」と出すため（中身は件数・時刻・エラーの種類だけ）
+    await metaRef.set({ startedAt: new Date().toISOString() }, { merge: true });
     let cursor = (meta.cursor as { at: string; id: string } | undefined) ?? null;
     const themes = await loadThemes(db);
     const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0 };
@@ -263,8 +265,12 @@ export async function ingestSweep(deps: IngestDeps) {
     }
     const total = (await db.collection('kbArticles').count().get()).data().count;
     const result = { ...counts, total };
-    await metaRef.set({ cursor, lastRunAt: new Date().toISOString(), last: counts, total }, { merge: true });
+    await metaRef.set({ cursor, lastRunAt: new Date().toISOString(), last: counts, total, lastError: null }, { merge: true });
     return result;
+  }).catch(async (e) => {
+    // 途中で止まったときは、画面で分かるように残してから知らせる
+    await metaRef.set({ lastErrorAt: new Date().toISOString(), lastError: String(e).slice(0, 300) }, { merge: true }).catch(() => {});
+    throw e;
   });
   if (!r.ran) return { skipped: true };
   const v = r.value;
