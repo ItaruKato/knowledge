@@ -15,7 +15,7 @@ env:
   PROJECT_NUMBER: '723210521199'
   SITE: prtimes-knowledge
   # 自動デプロイの許可（Workload Identity）を本人が Cloud Shell で足したら 'true' にする
-  DEPLOY_ENABLED: 'false'
+  DEPLOY_ENABLED: 'true'
 
 jobs:
   build:
