@@ -1,0 +1,53 @@
+/* 色と文字は PR Times Watcher（prtimes-inbox の src/index.css）とそろえる */
+:root{
+  --paper:#f5f6f8; --surface:#ffffff; --ink:#161a24; --ink-2:#4a5263; --ink-3:#7c8496;
+  --line:#e2e5eb; --accent:#2a3d8f; --accent-soft:#e6e9f6;
+  --keep:#1d7a52; --keep-soft:#e2f2ea; --drop:#a33a2c; --drop-soft:#f7e6e2;
+  --t-fund:#1d7a52; --t-ipo:#9a6a00; --t-ma:#6b3fa0; --t-new:#1f62b5; --t-mkt:#b03a72; --t-game:#7c8496;
+  --t-fund-bg:#e2f2ea; --t-ipo-bg:#f8efd9; --t-ma-bg:#efe7f8; --t-new-bg:#e3edf9; --t-mkt-bg:#f8e5ef; --t-game-bg:#eceef2;
+  --f-ui:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0f1218; --surface:#171b23; --ink:#e7e9ef; --ink-2:#aeb4c2; --ink-3:#7c8496;
+  --line:#272c37; --accent:#8fa2ff; --accent-soft:#222a4a;
+  --keep:#5cc794; --keep-soft:#173327; --drop:#f08a7a; --drop-soft:#3a1f1b;
+  --t-fund:#5cc794; --t-ipo:#e3b54f; --t-ma:#bb95ec; --t-new:#7fb0f0; --t-mkt:#ee8dbb; --t-game:#9aa1b1;
+  --t-fund-bg:#173327; --t-ipo-bg:#33290f; --t-ma-bg:#2b2140; --t-new-bg:#18293f; --t-mkt-bg:#3a1c2b; --t-game-bg:#242833;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f1218; --surface:#171b23; --ink:#e7e9ef; --ink-2:#aeb4c2; --ink-3:#7c8496;
+  --line:#272c37; --accent:#8fa2ff; --accent-soft:#222a4a;
+  --keep:#5cc794; --keep-soft:#173327; --drop:#f08a7a; --drop-soft:#3a1f1b;
+  --t-fund:#5cc794; --t-ipo:#e3b54f; --t-ma:#bb95ec; --t-new:#7fb0f0; --t-mkt:#ee8dbb; --t-game:#9aa1b1;
+  --t-fund-bg:#173327; --t-ipo-bg:#33290f; --t-ma-bg:#2b2140; --t-new-bg:#18293f; --t-mkt-bg:#3a1c2b; --t-game-bg:#242833;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body,#root{height:100%}
+body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.55;padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:9px 14px;font-weight:600;font-size:13px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.ghost{border:1px solid var(--line);background:none;border-radius:6px;padding:6px 10px;font-size:12px;color:var(--ink-2)}
+.err{color:var(--drop)}
+.login{min-height:100%;display:grid;place-items:center;padding:0 16px}
+.logincard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px 24px;display:flex;flex-direction:column;gap:14px;max-width:360px;width:100%}
+.logincard b{font-size:18px}
+.logincard p{margin:0;color:var(--ink-2);font-size:13px;line-height:1.7}
+.page{max-width:880px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px}
+.pagehead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pagehead b{font-size:18px}
+.pagehead .meta{color:var(--ink-3);font-size:12px}
+.pagehead .ghost{margin-left:auto}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.card h2{font-size:14px;margin:0 0 8px;color:var(--ink-2)}
+.big{font-size:28px;font-weight:700;margin:0 0 8px;font-family:var(--f-mono)}
+.plain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.plain li{display:flex;flex-direction:column}
+.plain a{color:var(--ink);font-weight:600;text-decoration:none}
+.plain a:hover{text-decoration:underline}
+.plain small{color:var(--ink-3);font-size:12px}

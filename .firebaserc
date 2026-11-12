@@ -1,0 +1,8 @@
+{
+  "projects": { "default": "prtimes-inbox" },
+  "targets": {
+    "prtimes-inbox": {
+      "hosting": { "knowledge": ["prtimes-knowledge"] }
+    }
+  }
+}

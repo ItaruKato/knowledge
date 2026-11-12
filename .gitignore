@@ -1,0 +1,29 @@
+# 依存・ビルド成果物
+node_modules
+dist
+dist-ssr
+functions/lib
+functions/node_modules
+*.local
+
+# Firebase
+.firebase
+*-debug.log*
+
+# ログ
+logs
+*.log
+
+# エディタ・OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude Code の作業用（サブエージェントのワークツリーなど）
+.claude/worktrees/

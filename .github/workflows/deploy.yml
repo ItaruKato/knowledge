@@ -1,0 +1,46 @@
+name: test-and-deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: prtimes-inbox
+  PROJECT_NUMBER: '723210521199'
+  SITE: prtimes-knowledge
+  # 自動デプロイの許可（Workload Identity）を本人が Cloud Shell で足したら 'true' にする
+  DEPLOY_ENABLED: 'false'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 画面のテストとビルド
+        run: npm ci && npm run lint && npm test && npm run build
+
+      - name: Google Cloud に認証
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-deploy@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+      - name: Hosting のサイトがなければ作る
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
+        run: |
+          npx -y firebase-tools@14.11.0 hosting:sites:get "$SITE" --project "$PROJECT_ID" >/dev/null 2>&1 \
+            || npx -y firebase-tools@14.11.0 hosting:sites:create "$SITE" --project "$PROJECT_ID" --non-interactive
+      # 共有の決まり：自分の分（hosting:knowledge、あとで functions:knowledge）だけを出す。Firestore はここから出さない
+      - name: Firebase にデプロイ（Knowledge Base の分だけ）
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
+        run: npx -y firebase-tools@14.11.0 deploy --only hosting:knowledge --project "$PROJECT_ID" --non-interactive
