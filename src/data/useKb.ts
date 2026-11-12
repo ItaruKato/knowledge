@@ -1,15 +1,36 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, getCountFromServer, getDoc, getDocs, query } from 'firebase/firestore';
+import { collection, doc, documentId, getCountFromServer, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { IngestStatus, KbArticle, KbTheme } from '../types';
 import { toIso } from '../lib/time';
+import { officialName } from '../lib/names';
 
 export interface KbData {
   articles: KbArticle[];
   themes: KbTheme[];
   handoffCount: number;
   status: IngestStatus;
+  /** 会社ID → 画面に出す会社名（正式名が分かれば正式名。src/lib/names.ts） */
+  names: Record<string, string>;
 }
+
+/** 会社IDごとの正式名を、台帳（companies）から30社ずつ読む */
+async function loadNames(arts: KbArticle[]): Promise<Record<string, string>> {
+  const pr = new Map(arts.map((a) => [a.companyId, a.company]));
+  const ids = [...pr.keys()].filter(Boolean);
+  const out: Record<string, string> = {};
+  for (let i = 0; i < ids.length; i += 30) {
+    const snap = await getDocs(query(collection(db, 'companies'), where(documentId(), 'in', ids.slice(i, i + 30))));
+    for (const d of snap.docs) {
+      const n = officialName(pr.get(d.id) ?? '', d.data());
+      if (n) out[d.id] = n;
+    }
+  }
+  return out;
+}
+
+/** 画面に出す会社名 */
+export const nameOf = (data: Pick<KbData, 'names'>, cid: string, fallback: string) => data.names[cid] ?? fallback;
 
 /**
  * Knowledge Base のデータをまとめて読む（いまは読んだ記事だけなので一度に読む。本文は kbBodies にあり、ここでは読まない）。
@@ -30,14 +51,18 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
           getDoc(doc(db, 'kbMeta', 'ingest')),
         ]);
         if (!alive) return;
-        setData({
-          articles: a.docs
+        const articles = a.docs
             .map((d) => {
               const v = d.data();
               // 日時は Firestore の Timestamp で入っていることがあるので、文字にそろえる
               return { ...(v as KbArticle), id: d.id, readAt: toIso(v.readAt), publishedAt: toIso(v.publishedAt) ?? '', analyzedAt: toIso(v.analyzedAt) ?? undefined };
             })
-            .sort((x, y) => (y.readAt ?? '').localeCompare(x.readAt ?? '')),
+            .sort((x, y) => (y.readAt ?? '').localeCompare(x.readAt ?? ''));
+        const names = await loadNames(articles).catch(() => ({}));
+        if (!alive) return;
+        setData({
+          articles,
+          names,
           themes: t.docs.map((d) => ({ ...(d.data() as KbTheme), name: String(d.get('name') ?? d.id) })),
           handoffCount: h.data().count,
           status: (st.data() as IngestStatus | undefined) ?? {},

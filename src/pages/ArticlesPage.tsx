@@ -39,7 +39,7 @@ export function ArticlesPage({ data }: { data: KbData }) {
       </section>
       <StatusLine s={data.status} />
       {data.articles.map((a) => (
-        <ArticleCard key={a.id} a={a} />
+        <ArticleCard key={a.id} a={a} name={data.names[a.companyId]} />
       ))}
     </>
   );

@@ -39,6 +39,8 @@
   - 住所：`/`（読んだ記事）、`/cases`（先行事例）、`/themes`・`/themes/{テーマ名}`（ネタ帳）、`/companies`（読んだ記事のある会社）、`/c/{会社ID}`（会社ページ。Long List からのリンク先。会社IDは PR TIMES の会社ID）
   - いまは kbArticles を一度に読み、絞り込みは画面の中で行う（src/lib/kb.ts）。全記事に広げるときは Firestore の問い合わせに移す
   - 本文は kbBodies に分けてある（一覧では読まない）
+  - 会社名の表示（src/lib/names.ts）：正式名（法人格を含む）が分かれば PR TIMES の会社名の代わりに出す。1. 会社 HP の正式名（companies.web.officialName。法人格を含み、PR TIMES の名前と同じ会社と分かるとき）→ 2. gBizINFO の正式名（companies.gbiz.name）→ 3. PR TIMES の会社名。台帳の name は書き換えない。会社ページでは PR TIMES での名前も小さく添える
+  - 見た目（v0.7）：色の名前は Watcher とそろえ、文字と背景の差を大きくした（補足の文字も 4.5:1 以上）。カードは「課題・狙い」「トーク例」「自分のメモ」に見出しを付け、業界（青）・規模/段階（緑）・課題（黄）で色を分ける
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
   - `kbIngest`（10分ごと）：`handoff` を `updatedAt` の順に読み、読了の記事を `kbArticles` に取り込む。PR TIMES の記事ページから本文（最大2万字）を取り、台帳の会社の情報・本人のメモと一緒に AI（`claude-opus-5-5`、effort high）で整理する。テーマは AI が `kbThemes` から選び、なければ作る
   - 整理し直すのはタイトル・メモ・自分用タグが変わったときだけ（★・読んだ日時・Watcher の下書きだけなら写すだけ）。整理のしかたを変えたら `functions/src/analyze.ts` の `ANALYSIS_V` を上げる
@@ -68,6 +70,7 @@
 - [x] 先行事例（カード＋4つの切り口の絞り込み・言葉で探す・業界×テーマの件数表）とネタ帳（サービスごとのテーマ → トーク例＋根拠の記事＋数字）（v0.4）
 - [x] 会社ページ（基本情報と出典、AI のまとめ・営業の切り口・相性のよいサービス・最近の動き、調達・M&A などの履歴、自分のメモと接点・Long List の温度感と進捗、PR TIMES の記事の時系列）と会社の一覧（v0.5）
 - [x] 会社 HP の情報（台帳側の共通の HP 読み込み companyWebSweep を prtimes-inbox に作った。読んだ会社は自動で webQueue に依頼、会社ページに「HP から肉付け」ボタン。正式な会社名・所在地・従業員数・資本金・売上高を出どころ付きで表示。会社の AI のまとめの材料にも入れる）（v0.6）
+- [x] 見やすさの調整（配色・文字の大きさ・カードの見出し）と、正式な会社名での表示（v0.7）
 - [ ] 全記事と検索（2026-09-01 以降）→ 質問 → レポート → MCP → パートナー
 
 ## データの形（自分のコレクション）

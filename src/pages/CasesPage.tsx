@@ -61,7 +61,7 @@ export function CasesPage({ data }: { data: KbData }) {
         </div>
         {view === 'cards' ? (
           items.length ? (
-            items.map((a) => <ArticleCard key={a.id} a={a} />)
+            items.map((a) => <ArticleCard key={a.id} a={a} name={data.names[a.companyId]} />)
           ) : (
             <p className="note">当てはまる事例はありません。</p>
           )

@@ -5,6 +5,7 @@ import { fmtDate, fmtTime, n } from '../lib/format';
 import { articleUrl, companyPrtimesUrl, yen } from '../lib/money';
 import { linkProps } from '../lib/router';
 import type { KbData } from '../data/useKb';
+import { officialName } from '../lib/names';
 
 /* 台帳（prtimes-inbox の companies・companyArticles）は読むだけ。形は prtimes-inbox の functions/src/company.ts・gbiz.ts */
 interface Ledger {
@@ -171,7 +172,10 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
   const readIds = new Set(reads.map((a) => a.id));
   const p = ledger?.profile ?? {};
   const g = ledger?.gbiz ?? {};
-  const name = ledger?.name || reads[0]?.company || `会社 ${cid}`;
+  const prName = ledger?.name || reads[0]?.company || '';
+  // 正式な会社名（HP・gBizINFO）が分かれば、それを見出しにする。PR TIMES の名前は小さく添える
+  const official = officialName(prName, ledger ?? undefined);
+  const name = official || prName || `会社 ${cid}`;
   const industry = reads.find((a) => a.kb?.industry)?.kb?.industry;
   const stage = reads.find((a) => a.kb?.stage && a.kb.stage !== '不明')?.kb?.stage;
 
@@ -205,6 +209,7 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
           ← 会社
         </a>
         <h2>{name}</h2>
+        {official && official !== prName && <small className="sub">PR TIMES での名前：{prName}</small>}
         <div className="badges">
           {industry && <span className="badge">{industry}</span>}
           {stage && <span className="badge">{stage}</span>}

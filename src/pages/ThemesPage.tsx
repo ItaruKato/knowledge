@@ -48,35 +48,44 @@ export function ThemesPage({ data, theme }: { data: KbData; theme: string | null
             {items.map((a) => (
               <article key={a.id} className="card neta">
                 {(a.kb?.talk ?? []).length > 0 && (
-                  <ul className="talk big">
-                    {a.kb!.talk.map((t, i) => (
-                      <li key={i}>{t}</li>
-                    ))}
-                  </ul>
+                  <div className="block talkbox">
+                    <b className="lbl">トーク例</b>
+                    <ul className="talk big">
+                      {a.kb!.talk.map((t, i) => (
+                        <li key={i}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
                 <div className="ground">
-                  <span className="badge">根拠</span>
+                  <span className="badge src">根拠の記事</span>
                   <a className="ttl small" href={a.url} target="_blank" rel="noreferrer">
                     {a.kb?.caseTitle || a.title}
                   </a>
-                  <small className="sub">
+                  <div className="byline">
                     <a className="co" {...linkProps(`/c/${a.companyId}`)}>
-                      {a.company}
-                    </a>{' '}
-                    · {fmtDate(a.publishedAt)}
-                    {a.stars > 0 ? ` · ${'★'.repeat(a.stars)}` : ''}
-                  </small>
+                      {data.names[a.companyId] ?? a.company}
+                    </a>
+                    <span className="date">{fmtDate(a.publishedAt)}</span>
+                    {a.stars > 0 && <span className="stars">{'★'.repeat(a.stars)}</span>}
+                  </div>
                 </div>
                 {(a.kb?.facts ?? []).length > 0 && (
                   <div className="facts">
                     {a.kb!.facts.map((f, i) => (
                       <span key={i}>
-                        <b>{f.label}</b> {f.value}
+                        <b>{f.label}</b>
+                        {f.value}
                       </span>
                     ))}
                   </div>
                 )}
-                {a.memo && <p className="memo">{a.memo}</p>}
+                {a.memo && (
+                  <div className="block memo">
+                    <b className="lbl">自分のメモ</b>
+                    <p>{a.memo}</p>
+                  </div>
+                )}
               </article>
             ))}
           </>

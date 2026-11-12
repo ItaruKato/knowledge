@@ -7,9 +7,9 @@ import type { KbData } from '../data/useKb';
 export function CompaniesPage({ data }: { data: KbData }) {
   const [q, setQ] = useState('');
   const list = useMemo(() => {
-    const m = new Map<string, { cid: string; name: string; count: number; last: string; industry?: string; stars: number }>();
+    const m = new Map<string, { cid: string; name: string; pr: string; count: number; last: string; industry?: string; stars: number }>();
     for (const a of data.articles) {
-      const c = m.get(a.companyId) ?? { cid: a.companyId, name: a.company, count: 0, last: '', industry: a.kb?.industry, stars: 0 };
+      const c = m.get(a.companyId) ?? { cid: a.companyId, name: data.names[a.companyId] ?? a.company, pr: a.company, count: 0, last: '', industry: a.kb?.industry, stars: 0 };
       c.count++;
       c.stars = Math.max(c.stars, a.stars ?? 0);
       if ((a.publishedAt ?? '') > c.last) c.last = a.publishedAt;
@@ -18,9 +18,9 @@ export function CompaniesPage({ data }: { data: KbData }) {
     }
     const w = q.normalize('NFKC').toLowerCase().trim();
     return [...m.values()]
-      .filter((c) => !w || `${c.name} ${c.industry ?? ''}`.normalize('NFKC').toLowerCase().includes(w))
+      .filter((c) => !w || `${c.name} ${c.pr} ${c.industry ?? ''}`.normalize('NFKC').toLowerCase().includes(w))
       .sort((x, y) => y.last.localeCompare(x.last));
-  }, [data.articles, q]);
+  }, [data.articles, data.names, q]);
   return (
     <div className="results">
       <input className="search" type="search" placeholder="会社名・業界で探す" value={q} onChange={(e) => setQ(e.target.value)} />
