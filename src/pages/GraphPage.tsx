@@ -55,6 +55,10 @@ function fade(hex: string, bg: string, t = 0.82): string {
   return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
 }
 
+/** 3D の球の大きさの係数と、球の半径（3d-force-graph と同じ計算：∛val × nodeRelSize） */
+const REL_3D = 3;
+const sphereRadius3d = (val: number) => Math.cbrt(Math.max(0, val)) * REL_3D;
+
 const endId = (v: unknown) => (typeof v === 'string' ? v : (v as { id: string }).id);
 const KIND_LABEL = { company: '会社', business: 'ビジネス', theme: 'テーマ', industry: '業界' } as const;
 
@@ -137,8 +141,10 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
         .showNavInfo(false)
         .nodeLabel(() => '')
         .nodeVal((x) => (x as GNode).val)
-        .nodeRelSize(3)
-        .nodeOpacity(0.95)
+        .nodeRelSize(REL_3D)
+        // 球をなめらかに（初期の 8 分割だと角ばって凸凹に見える）。透けると重なりがまだらに見えるので不透明に
+        .nodeResolution(32)
+        .nodeOpacity(1)
         .nodeColor((x) => nodeColor(x as GNode))
         .nodeThreeObjectExtend(true)
         .nodeThreeObject((x) => {
@@ -147,7 +153,8 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           s.color = lit(node.id) ? pal.text : fade(pal.text, pal.bg, 0.85);
           s.textHeight = node.kind === 'company' ? 4.2 : 3.4;
           s.fontWeight = node.kind === 'company' ? '700' : '500';
-          s.center.y = -0.9;
+          // 名前は自分の球に重ならないよう、球の大きさ（半径 = ∛大きさ × REL_3D）の分だけ真下に離す
+          s.position.y = -(sphereRadius3d(node.val) + s.textHeight * 1.05);
           return s;
         })
         .linkColor((l) => linkColor(l as GLink))
@@ -171,8 +178,9 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           ctx.fillStyle = lit(node.id) ? pal.text : fade(pal.text, pal.bg, 0.85);
-          const r = Math.sqrt(node.val) * 4;
-          ctx.fillText(node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label, node.x, node.y + r + 2 / scale);
+          // 名前は自分の丸に重ならないよう、丸の半径（√大きさ × 4）の下に置く
+          const r = Math.sqrt(Math.max(0, node.val)) * 4;
+          ctx.fillText(node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label, node.x, node.y + r + 3 / scale);
         })
         .linkColor((l) => linkColor(l as GLink))
         .linkWidth((l) => ((l as GLink).kind === 'capital' ? 2.6 : (l as GLink).kind === 'business' ? 1.4 : 0.6))
