@@ -26,8 +26,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
       - name: 画面のテストとビルド
         run: npm ci && npm run lint && npm test && npm run build
+      - name: 関数のビルドとテスト
+        working-directory: functions
+        run: npm ci && npm run build && npm test
 
       - name: Google Cloud に認証
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
@@ -40,7 +46,7 @@ jobs:
         run: |
           npx -y firebase-tools@14.11.0 hosting:sites:get "$SITE" --project "$PROJECT_ID" >/dev/null 2>&1 \
             || npx -y firebase-tools@14.11.0 hosting:sites:create "$SITE" --project "$PROJECT_ID" --non-interactive
-      # 共有の決まり：自分の分（hosting:knowledge、あとで functions:knowledge）だけを出す。Firestore はここから出さない
+      # 共有の決まり：自分の分（hosting:knowledge・functions:knowledge）だけを出す。Firestore はここから出さない（--force も付けない）
       - name: Firebase にデプロイ（Knowledge Base の分だけ）
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.DEPLOY_ENABLED == 'true'
-        run: npx -y firebase-tools@14.11.0 deploy --only hosting:knowledge --project "$PROJECT_ID" --non-interactive
+        run: npx -y firebase-tools@14.11.0 deploy --only hosting:knowledge,functions:knowledge --project "$PROJECT_ID" --non-interactive

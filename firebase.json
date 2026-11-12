@@ -9,5 +9,18 @@
         { "source": "/assets/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
       ]
     }
-  ]
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "knowledge",
+      "ignore": ["node_modules", ".git", "test", "*.log"],
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    }
+  ],
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
 }

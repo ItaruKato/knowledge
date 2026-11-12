@@ -35,7 +35,12 @@
 
 ## 構成
 - 画面：React + Vite + TypeScript（Watcher とそろえる）。Hosting のサイト `prtimes-knowledge`（target `knowledge`）
-- 関数：まだなし。作るときは `functions/`、`firebase.json` の functions に `"codebase": "knowledge"`
+- 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
+  - `kbIngest`（10分ごと）：`handoff` を `updatedAt` の順に読み、読了の記事を `kbArticles` に取り込む。PR TIMES の記事ページから本文（最大2万字）を取り、台帳の会社の情報・本人のメモと一緒に AI（`claude-opus-5-5`、effort high）で整理する。テーマは AI が `kbThemes` から選び、なければ作る
+  - 整理し直すのはタイトル・メモ・自分用タグが変わったときだけ（★・読んだ日時・Watcher の下書きだけなら写すだけ）。整理のしかたを変えたら `functions/src/analyze.ts` の `ANALYSIS_V` を上げる
+  - 読了を取り消した記事は外す。AI が失敗した記事は次の回にやり直す（3回まで）
+  - 使った量と費用の見積もりは `kbMeta/usage_{YYYYMMDD}`（ウィークリーで報告する）
+- テスト：`npm test`（画面）、`cd functions && npm test`（関数）、`cd functions && npm run test:emulator`（Firestore エミュレーター。Java が必要）
 - 自分のデータ：`kbArticles`・`kbCompanies`・`kbThemes`・`kbReports`・`kbMeta`（関数だけが書く）、`kbJobs`（画面からの依頼）、`kbConfig`（画面の設定）。ルールは prtimes-inbox の `firestore.rules` にある。新しいコレクションが要るときは、prtimes-inbox に足してから使う
 
 ## 受け取るデータの注意（コードを読んで分かったこと）
@@ -50,4 +55,12 @@
 - [x] 自動デプロイの許可（Workload Identity）・承認済みドメイン（本人が設定済み）
 - [x] 足りないことの決定（上の表）
 - [x] prtimes-inbox に `kb` のルールを足す
-- [ ] 読んだ記事の取り込み・整理 → 画面（事例・ネタ帳）→ 会社ページ → 全記事と検索 → 質問 → レポート → MCP → パートナー
+- [x] 読んだ記事の取り込み・整理（`kbIngest`）と、整理した記事の一覧
+- [ ] 画面（事例・ネタ帳）→ 会社ページ → 全記事と検索 → 質問 → レポート → MCP → パートナー
+
+## データの形（自分のコレクション）
+- `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、body・bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、inputHash、state（done / failed）、tries、error
+- `kbThemes/{テーマ名}`：name、count（入っている記事の数）、service、description、by（ai）、createdAt・updatedAt
+- `kbMeta/ingest`：cursor（handoff の updatedAt と記事ID）、lastRunAt、last（回ごとの件数）、total
+- `kbMeta/usage_{YYYYMMDD}`：モデルごとのトークン数・requests、usd（見積もり）、by（用途ごとの回数）
+- `kbMeta/lock_{name}`：重なって動かないための印

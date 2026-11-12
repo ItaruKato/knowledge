@@ -1,0 +1,52 @@
+import { FieldValue, type Firestore } from 'firebase-admin/firestore';
+
+export interface Usage {
+  model: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** 1M トークンあたりのドル（https://platform.claude.com/docs/en/about-claude/pricing、2026-11 時点） */
+export const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+};
+
+export function usageOf(
+  model: string,
+  u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null },
+): Usage {
+  return { model, input: u.input_tokens, output: u.output_tokens, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 };
+}
+
+/** ドルでの見積もり（知らないモデルは Opus 5.5 の値段で数える） */
+export function costUsd(u: Usage): number {
+  const p = PRICES[u.model] ?? PRICES['claude-opus-5-5'];
+  return (u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite) / 1e6;
+}
+
+/** JST の YYYYMMDD */
+export const jstDay = (ms = Date.now()) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+
+/** 使った量を kbMeta/usage_{YYYYMMDD} に足す（ウィークリーで報告する） */
+export async function addUsage(db: Firestore, u: Usage, purpose: string): Promise<void> {
+  const key = u.model.replace(/[^a-z0-9-]/gi, '_');
+  await db
+    .collection('kbMeta')
+    .doc(`usage_${jstDay()}`)
+    .set(
+      {
+        [key]: {
+          input: FieldValue.increment(u.input),
+          output: FieldValue.increment(u.output),
+          cacheRead: FieldValue.increment(u.cacheRead),
+          cacheWrite: FieldValue.increment(u.cacheWrite),
+          requests: FieldValue.increment(1),
+        },
+        usd: FieldValue.increment(costUsd(u)),
+        by: { [purpose]: FieldValue.increment(1) },
+      },
+      { merge: true },
+    );
+}
