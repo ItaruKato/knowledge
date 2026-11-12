@@ -57,13 +57,15 @@ function fade(hex: string, bg: string, t = 0.82): string {
 }
 
 /**
- * 名前は近づいたときだけ出す（遠くでは重なって読めないため）。
+ * 名前の出し方。会社の名前はいつも出す。ビジネス・テーマ・業界の名前は近づいたときだけ出す（遠くでは重なって読めないため。本人の決定）。
  * 3D：画面に映る文字の高さが LABEL_PX_FROM（px）で出はじめ、LABEL_PX_FULL 以上ではっきり（読める大きさになったら出す）
  * 2D：拡大率が LABEL_FROM_2D 以上で出はじめ、LABEL_FULL_2D 以上ではっきり
  * 押した丸とつながる丸・検索で当たった丸は、遠くても出す。マウスを乗せた丸は小さく名前を出す
  */
 const LABEL_PX_FROM = 7;
 const LABEL_PX_FULL = 10;
+/** 3D で遠くても出す名前（会社など）は、画面上でこの大きさ（px）より小さくしない */
+const LABEL_PX_MIN = 11;
 const LABEL_FROM_2D = 1.2;
 const LABEL_FULL_2D = 2;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -118,10 +120,11 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
       if (h) return h.has(id);
       return true;
     };
-    /** 遠くても名前を出す丸（押した丸とつながる丸、検索で当たった丸） */
-    const forced = (id: string) => {
+    /** 遠くても名前を出す丸（会社、押した丸とつながる丸、検索で当たった丸） */
+    const forced = (node: GNode) => {
+      if (node.kind === 'company') return true;
       const { focus: f, hits: h } = look.current;
-      return f ? f.has(id) : h ? h.has(id) : false;
+      return f ? f.has(node.id) : h ? h.has(node.id) : false;
     };
     const tooltip = (x: unknown) => `<span class="gtip">${esc((x as GNode).label)}</span>`;
     const nodeColor = (node: GNode) => {
@@ -174,21 +177,29 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           s.textHeight = node.kind === 'company' ? 4.2 : 3.4;
           s.fontWeight = node.kind === 'company' ? '700' : '500';
           // 名前は自分の球に重ならないよう、球の大きさ（半径 = ∛大きさ × REL_3D）の分だけ真下に離す
-          s.position.y = -(sphereRadius3d(node.val) + s.textHeight * 1.05);
+          const radius = sphereRadius3d(node.val);
+          s.position.y = -(radius + s.textHeight * 1.05);
+          const base = s.scale.clone();
           // 近づいたときだけ名前を出す（描くたびにカメラとの距離で濃さを決める）
           const mat = s.material as SpriteMaterial;
           mat.transparent = true;
           mat.depthWrite = false;
           const at = new Vector3();
           s.onBeforeRender = (renderer, _sc, camera) => {
-            if (forced(node.id)) {
-              mat.opacity = 1;
-              return;
-            }
             // 画面に映る文字の高さ（px）= 文字の高さ × 画面の高さ ÷（2 × 距離 × tan(視野角/2)）
             const d = Math.max(1, camera.position.distanceTo(s.getWorldPosition(at)));
             const fov = ((camera as { fov?: number }).fov ?? 40) * (Math.PI / 180);
             const px = (s.textHeight * renderer.domElement.clientHeight) / (2 * d * Math.tan(fov / 2));
+            if (forced(node)) {
+              // 遠くても読めるよう、小さくなりすぎたら文字を大きくする（自分の球に重ならないよう位置も下げる）
+              const k = Math.max(1, LABEL_PX_MIN / Math.max(0.1, px));
+              s.scale.set(base.x * k, base.y * k, 1);
+              s.position.y = -(radius + s.textHeight * k * 1.05);
+              mat.opacity = 1;
+              return;
+            }
+            s.scale.copy(base);
+            s.position.y = -(radius + s.textHeight * 1.05);
             mat.opacity = clamp01((px - LABEL_PX_FROM) / (LABEL_PX_FULL - LABEL_PX_FROM));
           };
           return s;
@@ -210,7 +221,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
         .nodeCanvasObject((x, ctx, scale) => {
           const node = x as GNode & { x: number; y: number };
           // 近づいた（拡大した）ときだけ名前を出す
-          const alpha = forced(node.id) ? 1 : clamp01((scale - LABEL_FROM_2D) / (LABEL_FULL_2D - LABEL_FROM_2D));
+          const alpha = forced(node) ? 1 : clamp01((scale - LABEL_FROM_2D) / (LABEL_FULL_2D - LABEL_FROM_2D));
           if (alpha <= 0.02) return;
           const size = (node.kind === 'company' ? 13 : 11) / scale;
           ctx.font = `${node.kind === 'company' ? 700 : 500} ${size}px "IBM Plex Sans JP", sans-serif`;
@@ -357,7 +368,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
                 会社と会社を直接結ぶ赤い線は<b>資本関係</b>（出資・買収・子会社化・資本業務提携など。2D の矢印は、出資・買収する側 → される側）だけです。ビジネスが似ている会社は、オレンジの<b>ビジネス</b>の丸を間にはさんでつながります。丸を押すと、つながる丸だけが光り、ここに要点が出ます。
               </p>
               {noBusiness && <p className="note">ビジネスと資本関係は、会社の AI のまとめを作り直すと出てきます（自動で1社ずつ進めています）。</p>}
-              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}名前は近づいたときだけ出ます（丸にマウスを乗せても出ます）。何もない所を押すと光りが消え、右上の「全体を表示」で拡大・回転も元に戻ります。</p>
+              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}会社の名前はいつも出ます。ビジネス・テーマ・業界の名前は近づいたときだけ出ます（丸にマウスを乗せても出ます）。何もない所を押すと光りが消え、右上の「全体を表示」で拡大・回転も元に戻ります。</p>
               <b className="lbl">丸の色</b>
               <ul className="legend">
                 <li>
