@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { fmtDate, fmtTime, n } from '../lib/format';
 import { articleUrl, companyPrtimesUrl, yen } from '../lib/money';
@@ -13,8 +13,93 @@ interface Ledger {
   profile?: Record<string, string | undefined>;
   gbiz?: { name?: string; representative?: string; capital?: number; employees?: number; established?: string; foundingYear?: number; url?: string; summary?: string; location?: string; status?: string; closeDate?: string };
   gbizInsured?: { total?: number; updated?: string };
+  /** 会社 HP から拾った項目（prtimes-inbox の functions/src/web.ts） */
+  web?: WebInfo;
+  webAt?: string;
   gbizFinance?: { year?: string; sales?: { raw: string; unit?: string; yen?: number }; ordinaryIncome?: { raw: string; unit?: string; yen?: number }; netIncome?: { raw: string; unit?: string; yen?: number } };
 }
+interface WebItem {
+  value: string;
+  asOf: string;
+  source: string;
+}
+interface WebInfo {
+  state?: 'done' | 'nosite' | 'blocked' | 'failed';
+  url?: string;
+  urlFrom?: 'profile' | 'gbiz' | 'search';
+  at?: string;
+  error?: string;
+  officialName?: WebItem | null;
+  address?: WebItem | null;
+  employees?: WebItem | null;
+  capital?: WebItem | null;
+  sales?: WebItem | null;
+}
+const URL_FROM: Record<string, string> = { profile: 'PR TIMES の企業情報', gbiz: 'gBizINFO', search: 'AI の Web 検索で見つけた' };
+
+/** 会社 HP から拾った項目（出どころのページと時点つき）と、読み込みの依頼 */
+function WebSection({ cid, web, queued }: { cid: string; web?: WebInfo; queued: boolean }) {
+  const [asked, setAsked] = useState(false);
+  const ask = async () => {
+    setAsked(true);
+    // webQueue は台帳の HP 読み込みの依頼口（prtimes-inbox の docs/plan.md）。5分ごとに処理される
+    await setDoc(doc(db, 'webQueue', cid), { at: serverTimestamp(), by: 'knowledge', redo: true }, { merge: true });
+  };
+  const waiting = queued || asked;
+  const items: [string, WebItem | null | undefined][] = [
+    ['正式な会社名', web?.officialName],
+    ['所在地', web?.address],
+    ['従業員数', web?.employees],
+    ['資本金', web?.capital],
+    ['売上高', web?.sales],
+  ];
+  return (
+    <section className="card">
+      <div className="sechead">
+        <h3>HP の情報</h3>
+        <button type="button" className="ghost" disabled={waiting} onClick={ask}>
+          {waiting ? '読み込み待ち…' : web?.state ? 'HP を読み直す' : 'HP から肉付け'}
+        </button>
+      </div>
+      {waiting && <p className="note">HP の読み込みを頼みました。5分ごとに順番に読み、1社1〜2分かかります（このページを開いたままで出てきます）。</p>}
+      {!web?.state && !waiting && <p className="note">まだ HP を読んでいません。読んだ記事の会社は自動で読みます。ほかの会社は「HP から肉付け」を押してください。</p>}
+      {web?.state === 'nosite' && <p className="note">公式サイトが見つかりませんでした。</p>}
+      {web?.state === 'blocked' && <p className="note">この会社の HP は自動での読み込みを断っている（robots.txt）ため、読んでいません。</p>}
+      {web?.state === 'failed' && <p className="err">読めませんでした：{web.error}</p>}
+      {web?.state === 'done' && (
+        <>
+          <dl className="info">
+            {items.map(([k, i]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>
+                  {i?.value ? (
+                    <>
+                      {i.value}
+                      {i.asOf && <small className="sub">（{i.asOf}）</small>}{' '}
+                      <a className="src" href={i.source} target="_blank" rel="noreferrer">
+                        出どころ
+                      </a>
+                    </>
+                  ) : (
+                    <span className="sub">HP に書いてありません</span>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <small className="ver">
+            <a href={web.url} target="_blank" rel="noreferrer">
+              {web.url}
+            </a>
+            （{URL_FROM[web.urlFrom ?? ''] ?? ''}）· {fmtTime(web.at)} に読んだ · AI が HP から書き写したもの
+          </small>
+        </>
+      )}
+    </section>
+  );
+}
+
 interface KbCompany {
   state?: 'working' | 'done' | 'failed';
   at?: string;
@@ -36,6 +121,7 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
   const [timeline, setTimeline] = useState<{ id: string; t: string; p: string }[]>([]);
   const [kbc, setKbc] = useState<KbCompany | null>(null);
   const [ll, setLl] = useState<Record<string, unknown> | null | 'none'>(null);
+  const [queued, setQueued] = useState(false);
   const [asked, setAsked] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -45,8 +131,8 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
     setAsked(false);
     (async () => {
       try {
-        const [c, ca] = await Promise.all([getDoc(doc(db, 'companies', cid)), getDoc(doc(db, 'companyArticles', cid))]);
-        setLedger((c.data() as Ledger | undefined) ?? { name: (ca.get('name') as string | undefined) ?? '' });
+        const ca = await getDoc(doc(db, 'companyArticles', cid));
+        setLedger((prev) => prev ?? { name: (ca.get('name') as string | undefined) ?? '' });
         const a = (ca.get('a') ?? {}) as Record<string, { t?: string; p?: string }>;
         setTimeline(Object.entries(a).map(([id, v]) => ({ id, t: String(v.t ?? ''), p: String(v.p ?? '') })).sort((x, y) => y.p.localeCompare(x.p)));
       } catch (e) {
@@ -60,11 +146,25 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
         setLl('none');
       }
     })();
-    return onSnapshot(
-      doc(db, 'kbCompanies', cid),
-      (s) => setKbc((s.data() as KbCompany | undefined) ?? {}),
-      () => setKbc({}),
-    );
+    // 台帳・AI のまとめ・HP の依頼は、変わったらすぐ画面に出す
+    const offs = [
+      onSnapshot(
+        doc(db, 'companies', cid),
+        (s) => s.exists() && setLedger(s.data() as Ledger),
+        (e) => setErr(String(e)),
+      ),
+      onSnapshot(
+        doc(db, 'kbCompanies', cid),
+        (s) => setKbc((s.data() as KbCompany | undefined) ?? {}),
+        () => setKbc({}),
+      ),
+      onSnapshot(
+        doc(db, 'webQueue', cid),
+        (s) => setQueued(s.exists()),
+        () => setQueued(false),
+      ),
+    ];
+    return () => offs.forEach((off) => off());
   }, [cid]);
 
   const reads = useMemo(() => data.articles.filter((a) => a.companyId === cid), [data.articles, cid]);
@@ -229,6 +329,8 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
         </div>
 
         <div className="col">
+          <WebSection cid={cid} web={ledger?.web} queued={queued} />
+
           <section className="card">
             <h3>基本情報</h3>
             {!ledger ? (

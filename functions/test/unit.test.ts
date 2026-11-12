@@ -64,6 +64,9 @@ describe('ingest', () => {
       '業種: 情報通信、上場: 未上場、資本金: 1000000円、従業員数: 25人',
     );
     expect(companyLine(undefined)).toBe('');
+    expect(
+      companyLine({ web: { state: 'done', employees: { value: '120名', asOf: '2025年4月', source: 'u' }, sales: { value: '32億円', asOf: '2025年3月期', source: 'u' }, capital: null } }),
+    ).toBe('従業員数（HP）: 120名（2025年4月）、売上高（HP）: 32億円（2025年3月期）');
   });
 });
 

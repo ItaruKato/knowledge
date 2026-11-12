@@ -15,7 +15,30 @@ export function companyLine(c: Record<string, unknown> | undefined): string {
     (c.gbizFinance as { sales?: { raw?: string; unit?: string } } | undefined)?.sales?.raw &&
       `売上高（有価証券報告書）: ${(c.gbizFinance as { sales: { raw: string; unit?: string } }).sales.raw}${(c.gbizFinance as { sales: { unit?: string } }).sales.unit ?? ''}`,
     g.summary && `事業概要: ${String(g.summary).slice(0, 200)}`,
+    ...webLines(c.web as WebInfo | undefined),
   ].filter(Boolean);
   return parts.join('、');
 }
 
+
+/** 台帳の companies.web（会社 HP から拾った項目。prtimes-inbox の functions/src/web.ts） */
+export interface WebItem {
+  value: string;
+  asOf: string;
+  source: string;
+}
+export interface WebInfo {
+  state?: 'done' | 'nosite' | 'blocked' | 'failed';
+  url?: string;
+  officialName?: WebItem | null;
+  address?: WebItem | null;
+  employees?: WebItem | null;
+  capital?: WebItem | null;
+  sales?: WebItem | null;
+}
+
+function webLines(w: WebInfo | undefined): string[] {
+  if (!w || w.state !== 'done') return [];
+  const one = (label: string, i?: WebItem | null) => (i?.value ? `${label}（HP）: ${i.value}${i.asOf ? `（${i.asOf}）` : ''}` : '');
+  return [one('正式名', w.officialName), one('従業員数', w.employees), one('資本金', w.capital), one('売上高', w.sales)].filter(Boolean);
+}

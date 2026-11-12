@@ -92,6 +92,8 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     expect(a.readAt).toBe('2026-11-12T00:00:00.000Z');
     expect((await db.doc(`kbBodies/${ID}`).get()).data()).toMatchObject({ body: '本文です。シリーズAで5億円を調達。', from: 'page' });
     expect((await db.doc('kbThemes/シリーズAの大型調達').get()).data()).toMatchObject({ count: 1, by: 'ai' });
+    // HP をまだ読んでいない会社は、台帳の HP 読み込みに依頼する
+    expect((await db.doc('webQueue/12345').get()).get('by')).toBe('knowledge');
     expect((await db.collection('kbMeta').get()).docs.map((d) => d.id).some((k) => k.startsWith('usage_'))).toBe(true);
 
     // ★だけ変えた → 整理し直さずに写すだけ
@@ -163,6 +165,19 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     expect(await runJob({ db, client: fakeClient([]) }, again)).toBe('same');
     const bad = await db.collection('kbJobs').add({ type: 'company', id: '../x', state: 'ready' });
     expect(await runJob({ db, client: fakeClient([]) }, bad)).toBe('failed');
+  });
+
+  it('前から読んでいた会社の HP の読み込みを一度だけ依頼する（読んだ会社は依頼しない）', async () => {
+    await db.doc('companies/1').set({ name: 'A社' });
+    await db.doc('companies/2').set({ name: 'B社', webAt: '2026-11-01T00:00:00Z' });
+    await db.doc('kbArticles/1.1').set({ companyId: '1', state: 'done' });
+    await db.doc('kbArticles/2.2').set({ companyId: '2', state: 'done' });
+    await ingestSweep({ db, client: fakeClient([]), get: async () => PAGE });
+    expect((await db.doc('webQueue/1').get()).exists).toBe(true);
+    expect((await db.doc('webQueue/2').get()).exists).toBe(false);
+    await db.doc('webQueue/1').delete();
+    await ingestSweep({ db, client: fakeClient([]), get: async () => PAGE });
+    expect((await db.doc('webQueue/1').get()).exists).toBe(false);
   });
 
   it('同時に2回動いても1回分だけ', async () => {
