@@ -5,26 +5,27 @@ import { n } from '../lib/format';
 import type { KbData } from '../data/useKb';
 
 /** 先行事例：カード＋4つの切り口の絞り込み と 業界×テーマの件数表 */
-export function CasesPage({ data }: { data: KbData }) {
-  const [f, setF] = useState<Filters>(emptyFilters);
+export function CasesPage({ data, q }: { data: KbData; q: string }) {
+  const [f0, setF] = useState<Filters>(emptyFilters);
+  // 言葉は上の検索窓（全部のタブで共通）から
+  const f = useMemo(() => ({ ...f0, q }), [f0, q]);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [open, setOpen] = useState(false);
-  const items = useMemo(() => applyFilters(data.articles, f).sort(byStarsThenDate), [data.articles, f]);
+  const items = useMemo(() => applyFilters(data.articles, f, undefined, data.names).sort(byStarsThenDate), [data.articles, f, data.names]);
   const toggle = (key: Facet, v: string) =>
     setF((p) => ({ ...p, [key]: p[key].includes(v) ? p[key].filter((x) => x !== v) : [...p[key], v] }));
-  const active = FACETS.reduce((s, { key }) => s + f[key].length, 0) + (f.q ? 1 : 0);
-  const m = useMemo(() => matrix(applyFilters(data.articles, { ...emptyFilters(), casesOnly: f.casesOnly })), [data.articles, f.casesOnly]);
+  const active = FACETS.reduce((s, { key }) => s + f[key].length, 0);
+  const m = useMemo(() => matrix(applyFilters(data.articles, { ...emptyFilters(), casesOnly: f.casesOnly, q }, undefined, data.names)), [data.articles, f.casesOnly, q, data.names]);
 
   return (
     <div className="cases">
       <aside className={`filters ${open ? 'open' : ''}`}>
-        <input className="search" type="search" placeholder="言葉で探す（会社・見出し・メモ…）" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} />
         <label className="check">
           <input type="checkbox" checked={!f.casesOnly} onChange={(e) => setF({ ...f, casesOnly: !e.target.checked })} />
           事例以外の記事も含める
         </label>
         {FACETS.map(({ key, label }) => {
-          const counts = facetCounts(data.articles, f, key);
+          const counts = facetCounts(data.articles, f, key, data.names);
           return (
             <div key={key} className="facet">
               <b>{label}</b>

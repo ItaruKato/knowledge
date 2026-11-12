@@ -2,6 +2,7 @@ import { ArticleCard } from '../components/ArticleCard';
 import { fmtTime, n } from '../lib/format';
 import type { IngestStatus } from '../types';
 import type { KbData } from '../data/useKb';
+import { matchesText } from '../lib/kb';
 
 /** 取り込み（10分ごと）の様子。うまく動いていないときに気づけるように */
 function StatusLine({ s }: { s: IngestStatus }) {
@@ -19,7 +20,8 @@ function StatusLine({ s }: { s: IngestStatus }) {
 }
 
 /** 読んだ記事（読了にした順） */
-export function ArticlesPage({ data }: { data: KbData }) {
+export function ArticlesPage({ data, q }: { data: KbData; q: string }) {
+  const shown = q.trim() ? data.articles.filter((a) => matchesText(a, q, data.names[a.companyId])) : data.articles;
   const done = data.articles.filter((a) => a.state === 'done').length;
   return (
     <>
@@ -38,7 +40,8 @@ export function ArticlesPage({ data }: { data: KbData }) {
         </div>
       </section>
       <StatusLine s={data.status} />
-      {data.articles.map((a) => (
+      {q.trim() && <p className="hits">「{q.trim()}」に当てはまる記事：{n(shown.length)} 件</p>}
+      {shown.map((a) => (
         <ArticleCard key={a.id} a={a} name={data.names[a.companyId]} />
       ))}
     </>

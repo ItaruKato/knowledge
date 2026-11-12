@@ -73,29 +73,7 @@ export interface IngestDeps {
   budgetMs?: number;
 }
 
-/** 台帳の HP 読み込み（prtimes-inbox の functions/src/web.ts）に依頼する。依頼済みなら何もしない */
-export async function askWeb(db: Firestore, cid: string): Promise<boolean> {
-  try {
-    await db.collection('webQueue').doc(cid).create({ at: FieldValue.serverTimestamp(), by: 'knowledge' });
-    return true;
-  } catch (e) {
-    if ((e as { code?: number }).code === 6) return false; // ALREADY_EXISTS
-    throw e;
-  }
-}
-
-/** 一度だけ：これまでに読んだ会社のうち、HP を読んでいない会社を依頼する */
-async function askWebForPast(db: Firestore, metaRef: FirebaseFirestore.DocumentReference): Promise<number> {
-  const snap = await db.collection('kbArticles').select('companyId').get();
-  const cids = [...new Set(snap.docs.map((d) => String(d.get('companyId') ?? '')).filter(Boolean))];
-  let asked = 0;
-  for (let i = 0; i < cids.length; i += 100) {
-    const cs = await db.getAll(...cids.slice(i, i + 100).map((c) => db.collection('companies').doc(c)));
-    for (const c of cs) if (c.exists && !c.get('webAt') && (await askWeb(db, c.id))) asked++;
-  }
-  await metaRef.set({ webAskedPast: true }, { merge: true });
-  return asked;
-}
+// 会社 HP の読み込み・Web 検索は、費用対効果のため本人が会社ページのボタンで指示したときだけ（自動では依頼しない。2026-11-12 本人の決定）
 
 type Outcome = 'analyzed' | 'synced' | 'removed' | 'failed' | 'skipped';
 
@@ -217,8 +195,6 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
     });
     // 会社ページのまとめを作り直す（依頼を書くと、すぐ動く関数が処理する）
     await addJob(db, { type: 'company', id: companyIdOf(h.id), by: 'ingest' });
-    // まだ HP を読んでいない会社は、台帳の HP 読み込みに依頼する（webQueue は台帳の依頼口）
-    if (!company?.webAt) await askWeb(db, companyIdOf(h.id));
     return 'analyzed';
   } catch (e) {
     const usage = (e as { usage?: Usage }).usage;
@@ -256,10 +232,7 @@ export async function ingestSweep(deps: IngestDeps) {
     const themes = await loadThemes(db);
     const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0 };
 
-    // 0-1. 一度だけ：前から読んでいた会社の HP の読み込みを依頼する
-    if (!meta.webAskedPast) await askWebForPast(db, metaRef);
-
-    // 0-2. 本文を kbArticles に入れていたころ（v0.3 まで）の記事は、本文を kbBodies へ移す
+    // 0. 本文を kbArticles に入れていたころ（v0.3 まで）の記事は、本文を kbBodies へ移す
     const withBody = await db.collection('kbArticles').orderBy('body').limit(50).get();
     for (const d of withBody.docs) {
       const b = db.batch();

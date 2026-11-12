@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { linkProps } from '../lib/router';
 import { fmtDate } from '../lib/format';
 import type { KbData } from '../data/useKb';
 
 /** 読んだ記事のある会社（全社の一覧と絞り込みは Long List で） */
-export function CompaniesPage({ data }: { data: KbData }) {
-  const [q, setQ] = useState('');
+export function CompaniesPage({ data, q }: { data: KbData; q: string }) {
   const list = useMemo(() => {
     const m = new Map<string, { cid: string; name: string; pr: string; count: number; last: string; industry?: string; stars: number }>();
     for (const a of data.articles) {
@@ -23,8 +22,9 @@ export function CompaniesPage({ data }: { data: KbData }) {
   }, [data.articles, data.names, q]);
   return (
     <div className="results">
-      <input className="search" type="search" placeholder="会社名・業界で探す" value={q} onChange={(e) => setQ(e.target.value)} />
-      <p className="note">読んだ記事のある会社です（全社の一覧は Long List で）。</p>
+      <p className="note">
+        読んだ記事のある会社です（全社の一覧は Long List で）。{q.trim() ? `「${q.trim()}」に当てはまる会社：${list.length} 社` : ''}
+      </p>
       {list.map((c) => (
         <a key={c.cid} className="card crow" {...linkProps(`/c/${c.cid}`)}>
           <b>{c.name}</b>

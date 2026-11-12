@@ -36,6 +36,8 @@ describe('先行事例の絞り込み', () => {
   it('言葉で探す（メモも対象。全角・半角をそろえる）', () => {
     expect(applyFilters(items, { ...emptyFilters(), q: '見える化' }).map((a) => a.id)).toEqual(['3']);
     expect(applyFilters(items, { ...emptyFilters(), q: 'ｓａａｓ 見出し2' }).map((a) => a.id)).toEqual(['2']);
+    // 正式な会社名でも探せる
+    expect(applyFilters(items, { ...emptyFilters(), q: '株式会社テスト' }, undefined, { '1': '株式会社テスト' }).map((a) => a.id)).toEqual(['1', '2', '3']);
   });
   it('件数は、ほかの切り口の絞り込みを効かせて数える', () => {
     const f = { ...emptyFilters(), industry: ['SaaS'] };

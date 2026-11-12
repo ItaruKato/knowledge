@@ -6,6 +6,7 @@ import { isOwner } from './lib/owner';
 import { fmtTime } from './lib/format';
 import { linkProps, useRoute } from './lib/router';
 import { useKb } from './data/useKb';
+import { SearchBox } from './components/SearchBox';
 import { ArticlesPage } from './pages/ArticlesPage';
 import { CasesPage } from './pages/CasesPage';
 import { ThemesPage } from './pages/ThemesPage';
@@ -19,9 +20,18 @@ const TABS = [
   { path: '/companies', label: '会社' },
 ];
 
+const PLACEHOLDER: Record<string, string> = {
+  '/': '読んだ記事を探す（会社・見出し・メモ・トーク例…）',
+  '/cases': '事例を探す（会社・見出し・メモ・トーク例…）',
+  '/themes': 'テーマ・ネタを探す',
+  '/companies': '会社を探す（会社名・業界）',
+};
+
 function Home({ user }: { user: User }) {
   const path = useRoute();
   const { data, error } = useKb();
+  // 検索した言葉（タブを切り替えても残す。× で一度に消せる）
+  const [q, setQ] = useState('');
   const tab = path.startsWith('/cases')
     ? '/cases'
     : path.startsWith('/themes')
@@ -49,12 +59,13 @@ function Home({ user }: { user: User }) {
           </a>
         ))}
       </nav>
+      <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} />
       {error && <p className="err">読み込めませんでした：{error}</p>}
       {!data && !error && <p className="note">読み込み中…</p>}
-      {data && tab === '/' && <ArticlesPage data={data} />}
-      {data && tab === '/cases' && <CasesPage data={data} />}
-      {data && tab === '/themes' && <ThemesPage data={data} theme={theme} />}
-      {data && tab === '/companies' && (cid ? <CompanyPage data={data} cid={cid} /> : <CompaniesPage data={data} />)}
+      {data && tab === '/' && <ArticlesPage data={data} q={q} />}
+      {data && tab === '/cases' && <CasesPage data={data} q={q} />}
+      {data && tab === '/themes' && <ThemesPage data={data} theme={theme} q={q} />}
+      {data && tab === '/companies' && (cid ? <CompanyPage data={data} cid={cid} q={q} /> : <CompaniesPage data={data} q={q} />)}
       <footer className="foot">
         Knowledge Base v{__APP_VERSION__}
         {__COMMIT__ ? `（${__COMMIT__}）` : ''} · 最終更新 {fmtTime(__BUILD_TIME__)} · {user.email}

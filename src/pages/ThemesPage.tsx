@@ -1,21 +1,35 @@
 import { useMemo } from 'react';
-import { byStarsThenDate, themesByService } from '../lib/kb';
+import { byStarsThenDate, matchesText, themesByService } from '../lib/kb';
 import { fmtDate, n } from '../lib/format';
 import { linkProps } from '../lib/router';
 import type { KbData } from '../data/useKb';
 
 /** テーマ別のネタ帳：左にテーマ（サービスごと）、右にそのテーマのネタ（トーク例＋根拠の記事＋数字） */
-export function ThemesPage({ data, theme }: { data: KbData; theme: string | null }) {
-  const groups = useMemo(() => themesByService(data.themes), [data.themes]);
+export function ThemesPage({ data, theme, q }: { data: KbData; theme: string | null; q: string }) {
+  const w = q.normalize('NFKC').toLowerCase().trim();
+  // 検索中は、名前・説明に言葉を含むテーマと、言葉に当てはまるネタがあるテーマだけを並べる
+  const groups = useMemo(() => {
+    if (!w) return themesByService(data.themes);
+    const hit = new Set(data.articles.filter((a) => matchesText(a, q, data.names[a.companyId])).flatMap((a) => a.themes ?? []));
+    return themesByService(data.themes.filter((t) => hit.has(t.name) || `${t.name} ${t.description ?? ''}`.normalize('NFKC').toLowerCase().includes(w)));
+  }, [data.themes, data.articles, data.names, q, w]);
   const current = theme ? data.themes.find((t) => t.name === theme) : null;
   const items = useMemo(
-    () => (theme ? data.articles.filter((a) => a.kb && (a.themes ?? []).includes(theme)).sort(byStarsThenDate) : []),
-    [data.articles, theme],
+    () =>
+      theme
+        ? data.articles
+            .filter((a) => a.kb && (a.themes ?? []).includes(theme))
+            .filter((a) => !w || matchesText(a, q, data.names[a.companyId]) || theme.normalize('NFKC').toLowerCase().includes(w))
+            .sort(byStarsThenDate)
+        : [],
+    [data.articles, data.names, theme, q, w],
   );
   return (
     <div className="cases">
       <aside className={`filters ${theme ? 'hidesp' : ''}`}>
-        {groups.length === 0 && <p className="note">まだテーマがありません。Watcher で記事を読了にすると、AI がテーマを作ります。</p>}
+        {groups.length === 0 && (
+          <p className="note">{w ? '当てはまるテーマはありません。' : 'まだテーマがありません。Watcher で記事を読了にすると、AI がテーマを作ります。'}</p>
+        )}
         {groups.map((g) => (
           <div key={g.service} className="facet">
             <b>{g.service}</b>

@@ -278,3 +278,15 @@ a.src { font-size: 12px; color: var(--accent); margin-left: 4px; }
   .timeline li { grid-template-columns: 84px minmax(0, 1fr); }
   .timeline li .badge { display: none; }
 }
+
+/* ---- 検索窓（v0.8。× で検索した言葉を一度に消す） ---- */
+.searchbox { position: relative; display: flex; align-items: center; }
+.searchicon { position: absolute; left: 14px; width: 18px; height: 18px; color: var(--ink-3); pointer-events: none; }
+.searchbox input { width: 100%; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 12px; padding: 11px 48px 11px 42px; font: inherit; font-size: 16px; color: var(--ink); box-shadow: var(--shadow); }
+.searchbox input::placeholder { color: var(--ink-3); }
+.searchbox input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.searchbox input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.searchclear { position: absolute; right: 8px; width: 32px; height: 32px; border: 0; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; }
+.searchclear svg { width: 16px; height: 16px; }
+.searchclear:hover { background: var(--accent); color: var(--accent-ink); }
+.hits { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-2); }

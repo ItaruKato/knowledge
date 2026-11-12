@@ -44,7 +44,8 @@ function WebSection({ cid, web, queued }: { cid: string; web?: WebInfo; queued: 
   const ask = async () => {
     setAsked(true);
     // webQueue は台帳の HP 読み込みの依頼口（prtimes-inbox の docs/plan.md）。5分ごとに処理される
-    await setDoc(doc(db, 'webQueue', cid), { at: serverTimestamp(), by: 'knowledge', redo: true }, { merge: true });
+    // HP の読み込み・Web 検索は費用がかかるので、ボタンを押したときだけ（manual: true の依頼だけ台帳が処理する）
+    await setDoc(doc(db, 'webQueue', cid), { at: serverTimestamp(), by: 'knowledge', redo: true, manual: true }, { merge: true });
   };
   const waiting = queued || asked;
   const items: [string, WebItem | null | undefined][] = [
@@ -63,7 +64,9 @@ function WebSection({ cid, web, queued }: { cid: string; web?: WebInfo; queued: 
         </button>
       </div>
       {waiting && <p className="note">HP の読み込みを頼みました。5分ごとに順番に読み、1社1〜2分かかります（このページを開いたままで出てきます）。</p>}
-      {!web?.state && !waiting && <p className="note">まだ HP を読んでいません。読んだ記事の会社は自動で読みます。ほかの会社は「HP から肉付け」を押してください。</p>}
+      {!web?.state && !waiting && (
+        <p className="note">まだ HP を読んでいません。読むときは「HP から肉付け」を押してください（費用がかかるので、押したときだけ HP を読み・Web で探します。1社15〜30円ほど）。</p>
+      )}
       {web?.state === 'nosite' && <p className="note">公式サイトが見つかりませんでした。</p>}
       {web?.state === 'blocked' && <p className="note">この会社の HP は自動での読み込みを断っている（robots.txt）ため、読んでいません。</p>}
       {web?.state === 'failed' && <p className="err">読めませんでした：{web.error}</p>}
@@ -117,7 +120,7 @@ interface KbCompany {
 const money = (m?: { raw: string; unit?: string; yen?: number }) => (m ? (m.yen !== undefined ? yen(m.yen) : `${m.raw}${m.unit ?? ''}`) : '');
 
 /** 会社ページ（/c/{会社ID}）。Long List からのリンク先にもなる */
-export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
+export function CompanyPage({ data, cid, q }: { data: KbData; cid: string; q: string }) {
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [timeline, setTimeline] = useState<{ id: string; t: string; p: string }[]>([]);
   const [kbc, setKbc] = useState<KbCompany | null>(null);
@@ -169,6 +172,11 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
   }, [cid]);
 
   const reads = useMemo(() => data.articles.filter((a) => a.companyId === cid), [data.articles, cid]);
+  // 上の検索窓の言葉で、PR TIMES の記事のタイトルを絞る
+  const shownTimeline = useMemo(() => {
+    const words = q.normalize('NFKC').toLowerCase().split(/\s+/).filter(Boolean);
+    return words.length ? timeline.filter((t) => words.every((w) => t.t.normalize('NFKC').toLowerCase().includes(w))) : timeline;
+  }, [timeline, q]);
   const readIds = new Set(reads.map((a) => a.id));
   const p = ledger?.profile ?? {};
   const g = ledger?.gbiz ?? {};
@@ -359,8 +367,9 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
 
           <section className="card">
             <h3>PR TIMES の記事（{n(timeline.length)}件）</h3>
+            {q.trim() && <p className="hits">「{q.trim()}」を含む記事：{n(shownTimeline.length)} 件</p>}
             <ul className="timeline">
-              {timeline.map((t) => (
+              {shownTimeline.map((t) => (
                 <li key={t.id} className={readIds.has(t.id) ? 'read' : ''}>
                   <span className="date">{t.p.slice(0, 10)}</span>
                   <a href={articleUrl(t.id)} target="_blank" rel="noreferrer">
@@ -370,7 +379,7 @@ export function CompanyPage({ data, cid }: { data: KbData; cid: string }) {
                 </li>
               ))}
             </ul>
-            <small className="ver">2025年11月以降の記事</small>
+            <small className="ver">2025年1月以降の記事（台帳がさかのぼった分）</small>
           </section>
         </div>
       </div>

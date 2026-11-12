@@ -44,12 +44,12 @@ export function valuesOf(a: KbArticle, f: Facet): string[] {
 const norm = (s: string) => s.normalize('NFKC').toLowerCase();
 
 /** 言葉で探す（タイトル・会社・事例の見出し・要約・課題・トーク例・メモ・テーマ） */
-export function matchesText(a: KbArticle, q: string): boolean {
+export function matchesText(a: KbArticle, q: string, extra = ''): boolean {
   const words = norm(q).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const k = a.kb;
   const hay = norm(
-    [a.title, a.company, a.memo, ...(a.myTags ?? []), ...(a.themes ?? []), k?.caseTitle, k?.caseSummary, k?.challengeNote, k?.industry, ...(k?.talk ?? []), ...(k?.facts ?? []).map((x) => `${x.label} ${x.value}`)]
+    [extra, a.title, a.company, a.memo, ...(a.myTags ?? []), ...(a.themes ?? []), k?.caseTitle, k?.caseSummary, k?.challengeNote, k?.industry, ...(k?.talk ?? []), ...(k?.facts ?? []).map((x) => `${x.label} ${x.value}`)]
       .filter(Boolean)
       .join('\n'),
   );
@@ -57,7 +57,7 @@ export function matchesText(a: KbArticle, q: string): boolean {
 }
 
 /** 切り口の中は「どれか」、切り口どうしは「すべて」 */
-export function applyFilters(items: KbArticle[], f: Filters, except?: Facet): KbArticle[] {
+export function applyFilters(items: KbArticle[], f: Filters, except?: Facet, names: Record<string, string> = {}): KbArticle[] {
   return items.filter((a) => {
     if (!a.kb) return false;
     if (f.casesOnly && !a.kb.isCase) return false;
@@ -66,14 +66,14 @@ export function applyFilters(items: KbArticle[], f: Filters, except?: Facet): Kb
       const v = valuesOf(a, key);
       if (!f[key].some((x) => v.includes(x))) return false;
     }
-    return matchesText(a, f.q);
+    return matchesText(a, f.q, names[a.companyId]);
   });
 }
 
 /** 切り口ごとの件数（ほかの切り口の絞り込みを効かせたうえで数える） */
-export function facetCounts(items: KbArticle[], f: Filters, facet: Facet): { value: string; count: number }[] {
+export function facetCounts(items: KbArticle[], f: Filters, facet: Facet, names: Record<string, string> = {}): { value: string; count: number }[] {
   const m = new Map<string, number>();
-  for (const a of applyFilters(items, f, facet)) for (const v of valuesOf(a, facet)) m.set(v, (m.get(v) ?? 0) + 1);
+  for (const a of applyFilters(items, f, facet, names)) for (const v of valuesOf(a, facet)) m.set(v, (m.get(v) ?? 0) + 1);
   const order = facet === 'stage' ? [...STAGES] : facet === 'challenge' ? [...CHALLENGES] : null;
   return [...m]
     .map(([value, count]) => ({ value, count }))
