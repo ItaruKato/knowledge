@@ -60,7 +60,10 @@ export function ThemesPage({ data, theme }: { data: KbData; theme: string | null
                     {a.kb?.caseTitle || a.title}
                   </a>
                   <small className="sub">
-                    {a.company} · {fmtDate(a.publishedAt)}
+                    <a className="co" {...linkProps(`/c/${a.companyId}`)}>
+                      {a.company}
+                    </a>{' '}
+                    · {fmtDate(a.publishedAt)}
                     {a.stars > 0 ? ` · ${'★'.repeat(a.stars)}` : ''}
                   </small>
                 </div>

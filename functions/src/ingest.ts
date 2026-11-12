@@ -5,6 +5,9 @@ import { analyze, ANALYSIS_V, themeName, type AnalysisOut, type AnalyzeInput } f
 import { extractBody, httpGet, isPrtimesUrl } from './page';
 import { addUsage, type Usage } from './usage';
 import { withLease } from './lease';
+import { companyLine } from './ledger';
+export { companyLine } from './ledger';
+import { addJob, jobSweep } from './jobs';
 
 /**
  * 読了にした記事（Watcher の handoff）を Knowledge Base に取り込む。
@@ -37,22 +40,6 @@ export function inputHash(h: Handoff): string {
     .update(JSON.stringify([ANALYSIS_V, a.title ?? '', a.url ?? '', h.memo ?? '', [...(h.myTags ?? [])].sort()]))
     .digest('hex')
     .slice(0, 16);
-}
-
-/** 台帳の会社の情報を、AI に渡す1行にする（中身はログに出さない） */
-export function companyLine(c: Record<string, unknown> | undefined): string {
-  if (!c) return '';
-  const p = (c.profile ?? {}) as Record<string, string | undefined>;
-  const g = (c.gbiz ?? {}) as Record<string, string | number | undefined>;
-  const parts = [
-    p.industry && `業種: ${p.industry}`,
-    p.listed && `上場: ${p.listed}`,
-    (p.capital || g.capital) && `資本金: ${p.capital ?? `${g.capital}円`}`,
-    g.employees !== undefined && `従業員数: ${g.employees}人`,
-    (p.established || g.established) && `設立: ${p.established ?? g.established}`,
-    g.summary && `事業概要: ${String(g.summary).slice(0, 200)}`,
-  ].filter(Boolean);
-  return parts.join('、');
 }
 
 /** 本人のメモなど、Watcher から写す項目（整理し直さなくても毎回写す） */
@@ -203,6 +190,8 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
       inputHash: hash,
       state: 'done',
     });
+    // 会社ページのまとめを作り直す（依頼を書くと、すぐ動く関数が処理する）
+    await addJob(db, { type: 'company', id: companyIdOf(h.id), by: 'ingest' });
     return 'analyzed';
   } catch (e) {
     const usage = (e as { usage?: Usage }).usage;
@@ -276,8 +265,10 @@ export async function ingestSweep(deps: IngestDeps) {
         cursor = { at: h.updatedAt, id: d.id };
       }
     }
+    // 3. 届かなかった画面からの依頼と、古い依頼の片づけ
+    const jobs = await jobSweep(deps, until);
     const total = (await db.collection('kbArticles').count().get()).data().count;
-    const result = { ...counts, total };
+    const result = { ...counts, total, jobs: jobs.ran };
     await metaRef.set({ cursor, lastRunAt: new Date().toISOString(), last: counts, total, lastError: null }, { merge: true });
     return result;
   }).catch(async (e) => {

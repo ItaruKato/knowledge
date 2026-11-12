@@ -73,3 +73,30 @@ describe('usage', () => {
     expect(jstDay(Date.UTC(2026, 10, 12, 15, 30))).toBe('20261113');
   });
 });
+
+import { companyContent, tidyCompany } from '../src/company';
+
+describe('company', () => {
+  it('根拠の記事IDが一覧にない出来事は外し、古い順に並べる', () => {
+    const t = tidyCompany(
+      {
+        summary: 's',
+        recent: [],
+        angles: [],
+        fits: [],
+        events: [
+          { date: '2026-10-01', type: '資金調達', title: 'b', amount: '', counterpart: '', articleId: '2.9' },
+          { date: '2026-01-01', type: 'M&A', title: 'a', amount: '', counterpart: '', articleId: '1.9' },
+          { date: '2026-05-01', type: 'その他', title: 'x', amount: '', counterpart: '', articleId: 'nope' },
+        ],
+      },
+      new Set(['1.9', '2.9']),
+    );
+    expect(t.events.map((e) => e.title)).toEqual(['a', 'b']);
+  });
+  it('材料に記事ID・日付・タイトルとメモを入れる', () => {
+    const c = companyContent({ name: 'A社', info: '', articles: [{ id: '1.9', t: 'タイトル', p: '2026-11-01T10:00:00+09:00' }], reads: [{ id: '1.9', title: 't', caseTitle: '', summary: '要約', memo: 'メモ', facts: '' }], longlist: '' });
+    expect(c).toContain('1.9｜2026-11-01｜タイトル');
+    expect(c).toContain('メモ: メモ');
+  });
+});

@@ -9,17 +9,27 @@ import { useKb } from './data/useKb';
 import { ArticlesPage } from './pages/ArticlesPage';
 import { CasesPage } from './pages/CasesPage';
 import { ThemesPage } from './pages/ThemesPage';
+import { CompaniesPage } from './pages/CompaniesPage';
+import { CompanyPage } from './pages/CompanyPage';
 
 const TABS = [
   { path: '/', label: '読んだ記事' },
   { path: '/cases', label: '先行事例' },
   { path: '/themes', label: 'ネタ帳' },
+  { path: '/companies', label: '会社' },
 ];
 
 function Home({ user }: { user: User }) {
   const path = useRoute();
   const { data, error } = useKb();
-  const tab = path.startsWith('/cases') ? '/cases' : path.startsWith('/themes') ? '/themes' : '/';
+  const tab = path.startsWith('/cases')
+    ? '/cases'
+    : path.startsWith('/themes')
+      ? '/themes'
+      : path.startsWith('/companies') || path.startsWith('/c/')
+        ? '/companies'
+        : '/';
+  const cid = /^\/c\/(\d{1,12})$/.exec(path)?.[1] ?? null;
   const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
     <div className={`page ${tab === '/' ? '' : 'wide'}`}>
@@ -44,6 +54,7 @@ function Home({ user }: { user: User }) {
       {data && tab === '/' && <ArticlesPage data={data} />}
       {data && tab === '/cases' && <CasesPage data={data} />}
       {data && tab === '/themes' && <ThemesPage data={data} theme={theme} />}
+      {data && tab === '/companies' && (cid ? <CompanyPage data={data} cid={cid} /> : <CompaniesPage data={data} />)}
       <footer className="foot">
         Knowledge Base v{__APP_VERSION__}
         {__COMMIT__ ? `（${__COMMIT__}）` : ''} · 最終更新 {fmtTime(__BUILD_TIME__)} · {user.email}

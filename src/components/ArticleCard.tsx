@@ -18,7 +18,10 @@ export function ArticleCard({ a }: { a: KbArticle }) {
         {k?.caseTitle || a.title}
       </a>
       <small className="sub">
-        {a.company} · {fmtDate(a.publishedAt)}
+        <a className="co" {...linkProps(`/c/${a.companyId}`)}>
+          {a.company}
+        </a>{' '}
+        · {fmtDate(a.publishedAt)}
         {k?.caseTitle ? ` · ${a.title}` : ''}
       </small>
       {(k?.caseSummary || a.draft?.summary) && <p className="sum">{k?.caseSummary || a.draft?.summary}</p>}

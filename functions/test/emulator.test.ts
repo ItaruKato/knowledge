@@ -7,6 +7,8 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import type Anthropic from '@anthropic-ai/sdk';
 import { ingestSweep } from '../src/ingest';
+import { runJob } from '../src/jobs';
+import type { CompanyAi } from '../src/company';
 import type { AnalysisOut } from '../src/analyze';
 
 const HOST = process.env.FIRESTORE_EMULATOR_HOST;
@@ -130,6 +132,36 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     await ingestSweep({ db, client: fakeClient([out(['テーマ'])]), get: async () => PAGE });
     expect((await db.doc(`kbArticles/${ID}`).get()).get('body')).toBeUndefined();
     expect((await db.doc(`kbBodies/${ID}`).get()).get('body')).toBe('古い本文');
+  });
+
+  it('記事を整理したら会社のまとめの依頼を足し、依頼を1回だけ処理する。材料が同じならまとめ直さない', async () => {
+    await db.doc('companies/12345').set({ name: 'テスト株式会社' });
+    await db.doc('companyArticles/12345').set({ name: 'テスト株式会社', a: { [ID]: { t: 'シリーズAで調達', p: '2026-11-10T10:00:00+09:00' } } });
+    await putHandoff();
+    await ingestSweep({ db, client: fakeClient([out(['テーマ'])]), get: async () => PAGE });
+    const jobs = await db.collection('kbJobs').get();
+    expect(jobs.docs.map((d) => d.data())).toMatchObject([{ type: 'company', id: '12345', state: 'ready' }]);
+
+    const ai: CompanyAi = {
+      summary: '要約',
+      recent: ['2026-11 調達'],
+      events: [{ date: '2026-11-10', type: '資金調達', title: 'シリーズA', amount: '5億円', counterpart: '', articleId: ID }],
+      angles: ['切り口'],
+      fits: [],
+    };
+    const seen: string[] = [];
+    const client = fakeClient([ai as unknown as AnalysisOut], seen);
+    const ref = jobs.docs[0].ref;
+    const [r1, r2] = await Promise.all([runJob({ db, client }, ref), runJob({ db, client }, ref)]);
+    expect([r1, r2].sort()).toEqual(['made', 'skipped']);
+    expect(seen[0]).toContain(`${ID}｜2026-11-10｜シリーズAで調達`);
+    expect((await db.doc('kbCompanies/12345').get()).data()).toMatchObject({ state: 'done', name: 'テスト株式会社', ai: { events: [{ articleId: ID }] } });
+    expect((await ref.get()).get('state')).toBe('done');
+
+    const again = await db.collection('kbJobs').add({ type: 'company', id: '12345', state: 'ready' });
+    expect(await runJob({ db, client: fakeClient([]) }, again)).toBe('same');
+    const bad = await db.collection('kbJobs').add({ type: 'company', id: '../x', state: 'ready' });
+    expect(await runJob({ db, client: fakeClient([]) }, bad)).toBe('failed');
   });
 
   it('同時に2回動いても1回分だけ', async () => {

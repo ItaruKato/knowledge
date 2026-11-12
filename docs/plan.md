@@ -18,7 +18,7 @@
 | 会社ページ | Knowledge Base が持つ。Long List からはリンク。Long List の温度感・進捗を読んで表示 |
 | 分担の記録 | prtimes-inbox の docs/plan.md「Long List と Knowledge Base の分担」に書いた |
 | 扱う深さ | 読んだ記事（handoff）は本文を取り込み AI で詳しく整理。それ以外はタイトル＋冒頭で軽く分類し、事例らしい記事だけ本文を取り込む |
-| さかのぼり | 2026-10-01 以降（`buckets` にある分） |
+| さかのぼり | 2026-09-01 以降（Watcher の取り込み範囲に合わせる。2026-11-12 に 10-01 から変更） |
 | AI の予算 | 上限なし。使った額は毎週報告（レポートに入れる） |
 | ネタ帳のテーマ | AI に任せる（記事から AI がテーマを作り、分ける） |
 | 規模・段階 | スタートアップ（シード〜シリーズA）／成長期（シリーズB以降）／中小企業／中堅・大企業／上場企業 |
@@ -36,7 +36,7 @@
 
 ## 構成
 - 画面：React + Vite + TypeScript（Watcher とそろえる）。Hosting のサイト `prtimes-knowledge`（target `knowledge`）
-  - 住所：`/`（読んだ記事）、`/cases`（先行事例）、`/themes`・`/themes/{テーマ名}`（ネタ帳）。会社ページは `/c/{会社ID}` にする予定（Long List からのリンク先）
+  - 住所：`/`（読んだ記事）、`/cases`（先行事例）、`/themes`・`/themes/{テーマ名}`（ネタ帳）、`/companies`（読んだ記事のある会社）、`/c/{会社ID}`（会社ページ。Long List からのリンク先。会社IDは PR TIMES の会社ID）
   - いまは kbArticles を一度に読み、絞り込みは画面の中で行う（src/lib/kb.ts）。全記事に広げるときは Firestore の問い合わせに移す
   - 本文は kbBodies に分けてある（一覧では読まない）
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
@@ -44,6 +44,9 @@
   - 整理し直すのはタイトル・メモ・自分用タグが変わったときだけ（★・読んだ日時・Watcher の下書きだけなら写すだけ）。整理のしかたを変えたら `functions/src/analyze.ts` の `ANALYSIS_V` を上げる
   - 読了を取り消した記事は外す。AI が失敗した記事は次の回にやり直す（3回まで）
   - 使った量と費用の見積もりは `kbMeta/usage_{YYYYMMDD}`（ウィークリーで報告する）
+  - 記事を整理したら、その会社のまとめの依頼（`kbJobs`、type company）を足す
+  - `kbJobRun`（Firestore の kbJobs に依頼が書かれた瞬間に動く。外から呼べる入口ではない）：会社ページの AI のまとめ（`kbCompanies`）。材料が同じならまとめ直さない（画面の「まとめ直す」は作り直す）。届かなかった依頼は kbIngest が拾い、1日たった依頼は消す
+  - 会社のまとめの材料：台帳（companies・companyArticles のタイトルと日付、300件まで）、読んだ記事の整理とメモ、Long List（longlist/{会社ID} があれば）。出来事（調達・M&A など）は根拠の記事IDつき。一覧にないIDは捨てる
 - バージョン：画面の上と下に `v{package.json の version} · 最終更新 {ビルドした日時}`（GitHub Actions のビルドではコミット番号も）。機能を足したら package.json の version を上げる（0.x の2つ目の数字）。各カードには AI の整理の版（`ANALYSIS_V`）と整理した日時
 - テスト：`npm test`（画面）、`cd functions && npm test`（関数）、`cd functions && npm run test:emulator`（Firestore エミュレーター。Java が必要）
 - 自分のデータ：`kbArticles`・`kbCompanies`・`kbThemes`・`kbReports`・`kbMeta`（関数だけが書く）、`kbJobs`（画面からの依頼）、`kbConfig`（画面の設定）。ルールは prtimes-inbox の `firestore.rules` にある。新しいコレクションが要るときは、prtimes-inbox に足してから使う
@@ -62,12 +65,15 @@
 - [x] prtimes-inbox に `kb` のルールを足す
 - [x] 読んだ記事の取り込み・整理（`kbIngest`）と、整理した記事の一覧
 - [x] 先行事例（カード＋4つの切り口の絞り込み・言葉で探す・業界×テーマの件数表）とネタ帳（サービスごとのテーマ → トーク例＋根拠の記事＋数字）（v0.4）
-- [ ] 会社ページ → 全記事と検索 → 質問 → レポート → MCP → パートナー
+- [x] 会社ページ（基本情報と出典、AI のまとめ・営業の切り口・相性のよいサービス・最近の動き、調達・M&A などの履歴、自分のメモと接点・Long List の温度感と進捗、PR TIMES の記事の時系列）と会社の一覧（v0.5）
+- [ ] 全記事と検索（2026-09-01 以降）→ 質問 → レポート → MCP → パートナー
 
 ## データの形（自分のコレクション）
 - `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error
 - `kbBodies/{記事ID}`：body（記事ページの本文、最大2万字。取れなければ冒頭）、from（page / lead）、at
 - `kbThemes/{テーマ名}`：name、count（入っている記事の数）、service、description、by（ai）、createdAt・updatedAt
+- `kbCompanies/{会社ID}`：v、id、name、ai（summary・recent・events[date・type・title・amount・counterpart・articleId]・angles・fits）、model、at、inputHash、articleCount・readCount、state（working / done / failed）、error
+- `kbJobs/{自動ID}`：type（company）、id、redo、state（ready / working / done / failed）、at、result、error、by（ingest なら関数から）
 - `kbMeta/ingest`：cursor（handoff の updatedAt と記事ID）、lastRunAt、last（回ごとの件数）、total
 - `kbMeta/usage_{YYYYMMDD}`：モデルごとのトークン数・requests、usd（見積もり）、by（用途ごとの回数）
 - `kbMeta/lock_{name}`：重なって動かないための印
