@@ -71,7 +71,8 @@ export async function companyMaterial(db: Firestore, cid: string): Promise<Compa
     name,
     info: companyLine(c.data()),
     articles,
-    reads: reads.docs.map((d) => {
+    // 知識に入れない記事（セミナー・告知など）はまとめの材料にしない
+    reads: reads.docs.filter((d) => d.get('state') !== 'excluded').map((d) => {
       const k = (d.get('kb') ?? {}) as { caseTitle?: string; caseSummary?: string; facts?: { label: string; value: string }[] };
       return {
         id: d.id,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractBody, isPrtimesUrl } from '../src/page';
-import { themeName, tidy, userContent, type AnalysisOut } from '../src/analyze';
+import { ruleExcluded, themeName, tidy, userContent, type AnalysisOut } from '../src/analyze';
 import { companyLine, inputHash } from '../src/ingest';
 import { costUsd, jstDay } from '../src/usage';
 
@@ -19,6 +19,7 @@ describe('page', () => {
 
 describe('analyze', () => {
   const base: AnalysisOut = {
+    articleType: '資金調達',
     industry: 'SaaS',
     themes: [
       { name: ' シリーズAの大型調達 ', service: '資金調達・M&A支援', description: 'x' },
@@ -50,6 +51,20 @@ describe('analyze', () => {
     });
     expect(c).toContain('- 地方DX（3件）');
     expect(c).toContain('担当者のメモ（優先して考慮する）: M');
+  });
+});
+
+describe('知識に入れない記事（タイトルで見分ける）', () => {
+  it('セミナー・告知・調査・キャンペーン・受賞は外す。事業の動きの言葉があれば AI に任せる', () => {
+    expect(ruleExcluded('【無料ウェビナー】営業DXの始め方を解説')).toBe('セミナー・勉強会・学習コンテンツ');
+    expect(ruleExcluded('お役立ち資料「採用の教科書」を無料公開')).toBe('セミナー・勉強会・学習コンテンツ');
+    expect(ruleExcluded('「Japan IT Week」に出展します')).toBe('展示会・イベントの告知');
+    expect(ruleExcluded('20代の転職に関する意識調査を実施')).toBe('調査レポート・アンケート');
+    expect(ruleExcluded('Amazonギフト券が当たるキャンペーン開始')).toBe('キャンペーン・プレゼント');
+    expect(ruleExcluded('新CFOに山田氏が就任')).toBe('受賞・認定・人事');
+    expect(ruleExcluded('シリーズAで5億円の資金調達を実施、セミナー事業も強化')).toBeNull();
+    expect(ruleExcluded('新サービス提供開始を記念したキャンペーン')).toBeNull();
+    expect(ruleExcluded('A社を子会社化')).toBeNull();
   });
 });
 

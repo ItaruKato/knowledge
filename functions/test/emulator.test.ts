@@ -19,8 +19,9 @@ const ID = '000000001.000012345';
 const URL = `https://prtimes.jp/main/html/rd/p/${ID}.html`;
 const PAGE = '<div id="press-release-body"><p>本文です。シリーズAで5億円を調達。</p></div>';
 
-function out(themes: string[]): AnalysisOut {
+function out(themes: string[], articleType: AnalysisOut['articleType'] = '資金調達'): AnalysisOut {
   return {
+    articleType,
     industry: 'SaaS',
     themes: themes.map((name) => ({ name, service: '資金調達・M&A支援', description: '説明' })),
     stage: 'スタートアップ（シード〜シリーズA）',
@@ -181,6 +182,38 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     await ingestSweep({ db, client: fakeClient([]), get: async () => PAGE });
     const jobs = (await db.collection('kbJobs').get()).docs.map((d) => d.data());
     expect(jobs).toMatchObject([{ type: 'company', id: '1', by: 'upgrade' }]);
+  });
+
+  it('タイトルでセミナーと分かる記事は AI を使わずに外し、画面に出さない（同じ内容ならもう判定しない）', async () => {
+    await putHandoff({ article: { id: ID, url: URL, title: '【無料ウェビナー】営業DXの始め方', company: 'テスト株式会社', publishedAt: '2026-11-10T10:00:00+09:00' } });
+    const seen: string[] = [];
+    const r = await ingestSweep({ db, client: fakeClient([], seen), get: async () => PAGE });
+    expect(r).toMatchObject({ excluded: 1, analyzed: 0 });
+    expect(seen).toHaveLength(0);
+    expect((await db.doc(`kbArticles/${ID}`).get()).data()).toMatchObject({ state: 'excluded', excludedBy: 'rule', excludedType: 'セミナー・勉強会・学習コンテンツ' });
+    expect((await db.doc(`kbArticles/${ID}`).get()).get('kb')).toBeUndefined();
+    expect((await db.collection('kbJobs').get()).size).toBe(0);
+  });
+
+  it('AI がイベントの告知と判定した記事は外し、テーマの件数にも入れない', async () => {
+    await putHandoff();
+    const r = await ingestSweep({ db, client: fakeClient([out(['イベント'], '展示会・イベントの告知')]), get: async () => PAGE });
+    expect(r).toMatchObject({ excluded: 1 });
+    expect((await db.doc(`kbArticles/${ID}`).get()).get('excludedBy')).toBe('ai');
+    expect((await db.doc('kbThemes/イベント').get()).exists).toBe(false);
+    expect((await db.doc(`kbBodies/${ID}`).get()).exists).toBe(false);
+  });
+
+  it('整理のしかたを変えたら（ANALYSIS_V）、前の版で整理した記事を整理し直し、知識に入れない種類なら外す', async () => {
+    await putHandoff();
+    await db.doc(`kbArticles/${ID}`).set({ id: ID, companyId: '12345', state: 'done', analysisV: 1, inputHash: 'old', themes: ['テーマ'], kb: {} });
+    await db.doc('kbThemes/テーマ').set({ name: 'テーマ', count: 1 });
+    // 前回の続きから読む位置を、この記事より後ろにしておく（handoff が変わっていなくても整理し直すことを確かめる）
+    await db.doc('kbMeta/ingest').set({ cursor: { at: '9999', id: 'z' }, webAskedPast: true });
+    const r = await ingestSweep({ db, client: fakeClient([out(['テーマ'], 'キャンペーン・プレゼント')]), get: async () => PAGE });
+    expect(r).toMatchObject({ excluded: 1 });
+    expect((await db.doc('kbThemes/テーマ').get()).get('count')).toBe(0);
+    expect((await db.collection('kbJobs').get()).docs.map((d) => d.get('by'))).toContain('exclude');
   });
 
   it('同時に2回動いても1回分だけ', async () => {

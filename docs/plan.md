@@ -34,6 +34,7 @@
 | テーマのまとめ直し | 記事が増えて似たテーマがたまったら、AI がまとめ直す仕組みを足す（未着手） |
 | HP・Web 検索 | 費用対効果のため、本人が指示したときだけ（会社ページの「HP から肉付け」ボタン。依頼に manual: true）。自動では依頼しない（2026-11-12 本人の決定） |
 | 知識のつながり | 会社と会社を直接結ぶのは資本関係だけ。ビジネスが似ている会社は 会社─ビジネス─会社 で結ぶ（2026-11-12 本人の決定）。テーマ・業界の丸も出せる。⑤で意味の近さも足す。3D と 2D を切り替え。押した丸：周りを光らせる・横に要点・会社ページ/ネタ帳へ・中心に広げる（2026-11-12 本人の決定） |
+| 知識に入れない記事 | セミナー・勉強会・学習コンテンツ、展示会・イベントの告知、調査レポート・アンケート、キャンペーン・プレゼント、受賞・認定・人事は取り込まない。新規事業・資金調達・M&A・提携・上場などは会社を中心に知識のつながりを作る（2026-11-12 本人の決定） |
 | まだ決めていない | ネタ1件の形（案：トーク例＋根拠の記事＋数字のカード）、質問の履歴（案：残す）、デイリー・ウィークリーの中身の細部 |
 
 ## 構成
@@ -55,6 +56,8 @@
   - 見た目（v0.7）：色の名前は Watcher とそろえ、文字と背景の差を大きくした（補足の文字も 4.5:1 以上）。カードは「課題・狙い」「トーク例」「自分のメモ」に見出しを付け、業界（青）・規模/段階（緑）・課題（黄）で色を分ける
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
   - `kbIngest`（10分ごと）：`handoff` を `updatedAt` の順に読み、読了の記事を `kbArticles` に取り込む。PR TIMES の記事ページから本文（最大2万字）を取り、台帳の会社の情報・本人のメモと一緒に AI（`claude-opus-5-5`、effort high）で整理する。テーマは AI が `kbThemes` から選び、なければ作る
+  - 知識に入れない記事（v0.12、ANALYSIS_V=2）：1. タイトルで明らかなもの（セミナー・ウェビナー・勉強会・お役立ち資料、出展・開催の告知、調査・アンケート、キャンペーン・プレゼント、受賞・認定・就任）は AI を使わずに外す。ただし資金調達・M&A・提携・新サービスなど事業の動きの言葉があれば AI に任せる（functions/src/analyze.ts の ruleExcluded）。2. それ以外は AI が記事の種類（articleType）を判定し、EXCLUDED_TYPES なら外す。外した記事は整理・本文・テーマの件数を残さず、`state: excluded` の印だけ残す（同じ内容なら再判定しない。画面には件数だけ）
+  - ANALYSIS_V を上げると、整理済みの記事を kbIngest が1回5件ずつ整理し直す
   - 整理し直すのはタイトル・メモ・自分用タグが変わったときだけ（★・読んだ日時・Watcher の下書きだけなら写すだけ）。整理のしかたを変えたら `functions/src/analyze.ts` の `ANALYSIS_V` を上げる
   - 読了を取り消した記事は外す。AI が失敗した記事は次の回にやり直す（3回まで）
   - 使った量と費用の見積もりは `kbMeta/usage_{YYYYMMDD}`（ウィークリーで報告する）
@@ -87,10 +90,11 @@
 - [x] HP・Web 検索は指示したときだけに。全部の画面で使える検索窓（× で一度に消す・Esc でも消す）（v0.8）
 - [x] 知識のつながり（3D / 2D、似ている会社と理由、押した丸の周りを光らせる・中心に広げる）（v0.9）
 - [x] つながりの決まりを変更：直接の線は資本関係だけ、似たビジネスは ビジネスの丸を間にはさむ（会社のまとめ v2 にビジネスと資本関係）（v0.10）
+- [x] セミナー・勉強コンテンツ・告知・調査・キャンペーン・受賞/人事の記事は知識に入れない（タイトルの決まり＋AI の記事の種類）。整理済みの記事も一度見直す（v0.12）
 - [ ] 全記事と検索（2026-09-01 以降）→ 質問 → レポート → MCP → パートナー
 
 ## データの形（自分のコレクション）
-- `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error
+- `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（articleType・industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error
 - `kbBodies/{記事ID}`：body（記事ページの本文、最大2万字。取れなければ冒頭）、from（page / lead）、at
 - `kbThemes/{テーマ名}`：name、count（入っている記事の数）、service、description、by（ai）、createdAt・updatedAt
 - `kbCompanies/{会社ID}`：v、id、name、ai（summary・recent・events[date・type・title・amount・counterpart・articleId]・angles・fits・businesses・capital[counterpart・relation・date・articleId]）、upgradeAskedV、model、at、inputHash、articleCount・readCount、state（working / done / failed）、error

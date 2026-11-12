@@ -14,6 +14,8 @@ export interface KbData {
   names: Record<string, string>;
   /** 会社ID → 会社の AI のまとめのビジネスと資本関係（つながりの図で使う） */
   companies: Record<string, KbCompanyInfo>;
+  /** 知識に入れなかった記事（セミナー・告知・調査・キャンペーン・受賞など）の件数。中身は出さない */
+  excludedCount: number;
 }
 
 /** 会社IDごとの正式名を、台帳（companies）から30社ずつ読む */
@@ -54,7 +56,9 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
           getDocs(collection(db, 'kbCompanies')),
         ]);
         if (!alive) return;
-        const articles = a.docs
+        // 知識に入れない記事（state: excluded）は、どの画面にも出さない
+        const shown = a.docs.filter((d) => d.get('state') !== 'excluded');
+        const articles = shown
             .map((d) => {
               const v = d.data();
               // 日時は Firestore の Timestamp で入っていることがあるので、文字にそろえる
@@ -66,6 +70,7 @@ export function useKb(): { data: KbData | null; error: string | null; reload: ()
         setData({
           articles,
           names,
+          excludedCount: a.size - shown.length,
           companies: Object.fromEntries(
             kc.docs.map((d) => [d.id, { businesses: (d.get('ai.businesses') as string[] | undefined) ?? [], capital: (d.get('ai.capital') as KbCompanyInfo['capital']) ?? [] }]),
           ),

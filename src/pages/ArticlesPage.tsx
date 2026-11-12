@@ -40,6 +40,11 @@ export function ArticlesPage({ data, q }: { data: KbData; q: string }) {
         </div>
       </section>
       <StatusLine s={data.status} />
+      {data.excludedCount > 0 && (
+        <p className="note">
+          セミナー・勉強コンテンツ・イベントの告知・調査レポート・キャンペーン・受賞・人事の記事 {n(data.excludedCount)} 件は、知識に入れていません。
+        </p>
+      )}
       {q.trim() && <p className="hits">「{q.trim()}」に当てはまる記事：{n(shown.length)} 件</p>}
       {shown.map((a) => (
         <ArticleCard key={a.id} a={a} name={data.names[a.companyId]} />

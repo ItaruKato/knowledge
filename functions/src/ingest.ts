@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import { FieldPath, FieldValue, Timestamp, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
-import { analyze, ANALYSIS_V, themeName, type AnalysisOut, type AnalyzeInput } from './analyze';
+import { analyze, ANALYSIS_V, EXCLUDED_TYPES, ruleExcluded, themeName, type AnalysisOut, type AnalyzeInput } from './analyze';
 import { extractBody, httpGet, isPrtimesUrl } from './page';
 import { addUsage, type Usage } from './usage';
 import { withLease } from './lease';
@@ -76,7 +76,39 @@ export interface IngestDeps {
 
 // 会社 HP の読み込み・Web 検索は、費用対効果のため本人が会社ページのボタンで指示したときだけ（自動では依頼しない。2026-11-12 本人の決定）
 
-type Outcome = 'analyzed' | 'synced' | 'removed' | 'failed' | 'skipped';
+/**
+ * 知識に入れない記事（セミナー・勉強会・学習コンテンツ、展示会・イベントの告知、調査レポート・アンケート、キャンペーン・プレゼント、受賞・認定・人事。本人の決定）。
+ * 整理・本文・テーマの件数は残さず、同じ記事を何度も判定しないための印（state: excluded）だけを残す。画面には出さない
+ */
+async function exclude(
+  db: Firestore,
+  h: Handoff,
+  existing: DocumentSnapshot,
+  themes: Map<string, number>,
+  prevThemes: string[],
+  hash: string,
+  type: string,
+  by: 'rule' | 'ai',
+) {
+  if (prevThemes.length) await applyThemes(db, themes, prevThemes, []);
+  await db.collection('kbBodies').doc(h.id).delete();
+  await db.collection('kbArticles').doc(h.id).set({
+    v: 1,
+    id: h.id,
+    companyId: companyIdOf(h.id),
+    state: 'excluded',
+    excludedType: type,
+    excludedBy: by,
+    inputHash: hash,
+    analysisV: ANALYSIS_V,
+    handoffAt: h.updatedAt ?? null,
+    updatedAt: new Date().toISOString(),
+  });
+  // 前は知識に入っていた記事なら、会社のまとめも作り直す
+  if (existing.get('state') === 'done') await addJob(db, { type: 'company', id: companyIdOf(h.id), by: 'exclude' });
+}
+
+type Outcome = 'analyzed' | 'synced' | 'removed' | 'failed' | 'skipped' | 'excluded';
 
 async function loadThemes(db: Firestore): Promise<Map<string, number>> {
   const snap = await db.collection('kbThemes').get();
@@ -133,6 +165,14 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
   }
 
   const hash = inputHash(h);
+  // 知識に入れないと決めた記事は、同じ内容のあいだはもう判定しない
+  if (existing.get('state') === 'excluded' && existing.get('inputHash') === hash) return 'excluded';
+  // タイトルで明らかに知識に入れない記事（セミナー・告知・調査・キャンペーン・受賞など）は、AI を使わずに外す
+  const byRule = ruleExcluded(h.article?.title ?? '');
+  if (byRule) {
+    await exclude(db, h, existing, themes, prevThemes, hash, byRule, 'rule');
+    return 'excluded';
+  }
   if (existing.get('state') === 'done' && existing.get('inputHash') === hash) {
     await ref.set(copied(h), { merge: true });
     return 'synced';
@@ -179,6 +219,11 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
   try {
     const { out, model, usage } = await analyze(deps.client(), input);
     await addUsage(db, usage, 'ingest');
+    // AI がセミナー・告知などと判定した記事は、知識に入れない
+    if (EXCLUDED_TYPES.includes(out.articleType)) {
+      await exclude(db, h, existing, themes, prevThemes, hash, out.articleType, 'ai');
+      return 'excluded';
+    }
     // テーマ名は、いまあるテーマと表記ゆれだけの違いならそちらに寄せる
     out.themes = out.themes.map((t) => ({ ...t, name: [...themes.keys()].find((k) => themeName(k) === t.name) ?? t.name }));
     await applyThemes(db, themes, prevThemes, out.themes);
@@ -231,7 +276,7 @@ export async function ingestSweep(deps: IngestDeps) {
     await metaRef.set({ startedAt: new Date().toISOString() }, { merge: true });
     let cursor = (meta.cursor as { at: string; id: string } | undefined) ?? null;
     const themes = await loadThemes(db);
-    const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0 };
+    const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0, excluded: 0 };
 
     // 0. 本文を kbArticles に入れていたころ（v0.3 まで）の記事は、本文を kbBodies へ移す
     const withBody = await db.collection('kbArticles').orderBy('body').limit(50).get();
@@ -269,6 +314,16 @@ export async function ingestSweep(deps: IngestDeps) {
         cursor = { at: h.updatedAt, id: d.id };
       }
     }
+    // 2-1. 整理のしかたを変えたとき（ANALYSIS_V を上げたとき）は、整理した記事を1回5件ずつ整理し直す（記事の種類の判定もここで）
+    const olds = (await db.collection('kbArticles').where('state', '==', 'done').select('analysisV').get()).docs
+      .filter((d) => Number(d.get('analysisV') ?? 1) < ANALYSIS_V)
+      .slice(0, 5);
+    for (const d of olds) {
+      if (Date.now() >= until) break;
+      const hd = await db.collection('handoff').doc(d.id).get();
+      if (hd.exists) counts[await ingestOne(deps, { ...(hd.data() as Handoff), id: hd.id }, themes)]++;
+    }
+
     // 2-2. まとめ方を変えたとき（COMPANY_V を上げたとき）は、まとめのある会社を一度ずつまとめ直す（1回に5社まで）
     const old = await db.collection('kbCompanies').where('v', '<', COMPANY_V).limit(20).get();
     let upgraded = 0;
@@ -293,6 +348,6 @@ export async function ingestSweep(deps: IngestDeps) {
   });
   if (!r.ran) return { skipped: true };
   const v = r.value;
-  if (v.analyzed || v.removed || v.failed) deps.log?.('kb ingest', v);
+  if (v.analyzed || v.removed || v.failed || v.excluded) deps.log?.('kb ingest', v);
   return v;
 }

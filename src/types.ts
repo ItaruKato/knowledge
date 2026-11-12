@@ -11,7 +11,8 @@ export interface KbArticle {
   myTags: string[];
   stars: number;
   draft: { summary?: string; angles?: string[]; industry?: string } | null;
-  state?: 'done' | 'failed';
+  /** excluded：知識に入れない記事（画面には出さない） */
+  state?: 'done' | 'failed' | 'excluded';
   /** AI で整理した日時と、整理のしかたの版（functions/src/analyze.ts の ANALYSIS_V） */
   analyzedAt?: string;
   analysisV?: number;
