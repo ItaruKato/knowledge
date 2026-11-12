@@ -1,0 +1,84 @@
+import { useMemo } from 'react';
+import { byStarsThenDate, themesByService } from '../lib/kb';
+import { fmtDate, n } from '../lib/format';
+import { linkProps } from '../lib/router';
+import type { KbData } from '../data/useKb';
+
+/** テーマ別のネタ帳：左にテーマ（サービスごと）、右にそのテーマのネタ（トーク例＋根拠の記事＋数字） */
+export function ThemesPage({ data, theme }: { data: KbData; theme: string | null }) {
+  const groups = useMemo(() => themesByService(data.themes), [data.themes]);
+  const current = theme ? data.themes.find((t) => t.name === theme) : null;
+  const items = useMemo(
+    () => (theme ? data.articles.filter((a) => a.kb && (a.themes ?? []).includes(theme)).sort(byStarsThenDate) : []),
+    [data.articles, theme],
+  );
+  return (
+    <div className="cases">
+      <aside className={`filters ${theme ? 'hidesp' : ''}`}>
+        {groups.length === 0 && <p className="note">まだテーマがありません。Watcher で記事を読了にすると、AI がテーマを作ります。</p>}
+        {groups.map((g) => (
+          <div key={g.service} className="facet">
+            <b>{g.service}</b>
+            {g.themes.map((t) => (
+              <a key={t.name} className="fopt" aria-pressed={t.name === theme} {...linkProps(`/themes/${t.name}`)}>
+                <span>{t.name}</span>
+                <span className="n">{t.count}</span>
+              </a>
+            ))}
+          </div>
+        ))}
+      </aside>
+      <section className="results">
+        {!theme ? (
+          <p className="note onlypc">左からテーマを選んでください。</p>
+        ) : (
+          <>
+            <div className="toolbar">
+              <a className="ghost onlysp" {...linkProps('/themes')}>
+                ← テーマ一覧
+              </a>
+            </div>
+            <header className="themehead">
+              <h2>{theme}</h2>
+              {current?.description && <p className="sum">{current.description}</p>}
+              <small className="sub">
+                {current?.service ?? ''} · {n(items.length)} 件
+              </small>
+            </header>
+            {items.map((a) => (
+              <article key={a.id} className="card neta">
+                {(a.kb?.talk ?? []).length > 0 && (
+                  <ul className="talk big">
+                    {a.kb!.talk.map((t, i) => (
+                      <li key={i}>{t}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="ground">
+                  <span className="badge">根拠</span>
+                  <a className="ttl small" href={a.url} target="_blank" rel="noreferrer">
+                    {a.kb?.caseTitle || a.title}
+                  </a>
+                  <small className="sub">
+                    {a.company} · {fmtDate(a.publishedAt)}
+                    {a.stars > 0 ? ` · ${'★'.repeat(a.stars)}` : ''}
+                  </small>
+                </div>
+                {(a.kb?.facts ?? []).length > 0 && (
+                  <div className="facts">
+                    {a.kb!.facts.map((f, i) => (
+                      <span key={i}>
+                        <b>{f.label}</b> {f.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {a.memo && <p className="memo">{a.memo}</p>}
+              </article>
+            ))}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -29,3 +29,20 @@ export interface KbArticle {
     talk: string[];
   };
 }
+
+/** kbThemes/{テーマ名}（ネタ帳のテーマ。AI が作る） */
+export interface KbTheme {
+  name: string;
+  count: number;
+  service?: string;
+  description?: string;
+}
+
+/** kbMeta/ingest（取り込みの様子） */
+export interface IngestStatus {
+  startedAt?: string;
+  lastRunAt?: string;
+  lastError?: string | null;
+  lastErrorAt?: string;
+  last?: Record<string, number>;
+}

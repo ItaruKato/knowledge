@@ -9,7 +9,7 @@ import { withLease } from './lease';
 /**
  * 読了にした記事（Watcher の handoff）を Knowledge Base に取り込む。
  * - 読むだけ：handoff・saved・companies（Watcher・台帳のもの）
- * - 書く：kbArticles/{記事ID}（整理した記事）、kbThemes/{テーマ名}（ネタ帳のテーマ）、kbMeta/ingest（進み具合）
+ * - 書く：kbArticles/{記事ID}（整理した記事）、kbBodies/{記事ID}（本文。大きいので分ける）、kbThemes/{テーマ名}（ネタ帳のテーマ）、kbMeta/ingest（進み具合）
  * handoff を updatedAt の順に読み、読み終えた位置を kbMeta/ingest に残す（メモや★を直すと updatedAt が変わり、もう一度読む）。
  */
 
@@ -126,7 +126,8 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
   const { db } = deps;
   if (!ID_RE.test(h.id)) return 'skipped';
   const ref = db.collection('kbArticles').doc(h.id);
-  const [saved, existing] = await db.getAll(db.collection('saved').doc(h.id), ref);
+  const bodyRef = db.collection('kbBodies').doc(h.id);
+  const [saved, existing, bodyDoc] = await db.getAll(db.collection('saved').doc(h.id), ref, bodyRef);
   const prevThemes = (existing.get('themes') as string[] | undefined) ?? [];
 
   // 読了を取り消した記事は Knowledge Base から外す
@@ -134,6 +135,7 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
     if (existing.exists) {
       if (prevThemes.length) await applyThemes(db, themes, prevThemes, []);
       await ref.delete();
+      await bodyRef.delete();
       return 'removed';
     }
     return 'skipped';
@@ -150,8 +152,8 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
   }
 
   // 本文（一度取れたら取っておく）
-  let body = (existing.get('body') as string | undefined) ?? '';
-  let bodyFrom = (existing.get('bodyFrom') as string | undefined) ?? '';
+  let body = (bodyDoc.get('body') as string | undefined) ?? (existing.get('body') as string | undefined) ?? '';
+  let bodyFrom = (bodyDoc.get('from') as string | undefined) ?? (existing.get('bodyFrom') as string | undefined) ?? '';
   if (!body || bodyFrom !== 'page') {
     const url = h.article?.url;
     if (isPrtimesUrl(url)) {
@@ -189,9 +191,9 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
     // テーマ名は、いまあるテーマと表記ゆれだけの違いならそちらに寄せる
     out.themes = out.themes.map((t) => ({ ...t, name: [...themes.keys()].find((k) => themeName(k) === t.name) ?? t.name }));
     await applyThemes(db, themes, prevThemes, out.themes);
+    await bodyRef.set({ body, from: bodyFrom, at: new Date().toISOString() });
     await ref.set({
       ...copied(h),
-      body,
       bodyFrom,
       kb: out,
       themes: out.themes.map((t) => t.name),
@@ -206,10 +208,11 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
     const usage = (e as { usage?: Usage }).usage;
     if (usage) await addUsage(db, usage, 'ingest');
     const sameInput = existing.get('inputHash') === hash;
+    await bodyRef.set({ body, from: bodyFrom, at: new Date().toISOString() });
     await ref.set(
       {
         ...copied(h),
-        body,
+        body: FieldValue.delete(),
         bodyFrom,
         inputHash: hash,
         // 前の整理（kb）は残したまま、やり直し待ちにする
@@ -236,6 +239,15 @@ export async function ingestSweep(deps: IngestDeps) {
     let cursor = (meta.cursor as { at: string; id: string } | undefined) ?? null;
     const themes = await loadThemes(db);
     const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0 };
+
+    // 0. 本文を kbArticles に入れていたころ（v0.3 まで）の記事は、本文を kbBodies へ移す
+    const withBody = await db.collection('kbArticles').orderBy('body').limit(50).get();
+    for (const d of withBody.docs) {
+      const b = db.batch();
+      b.set(db.collection('kbBodies').doc(d.id), { body: d.get('body'), from: d.get('bodyFrom') ?? 'page', at: new Date().toISOString() });
+      b.update(d.ref, { body: FieldValue.delete() });
+      await b.commit();
+    }
 
     // 1. 失敗した記事をやり直す
     const retry = await db.collection('kbArticles').where('state', '==', 'failed').limit(10).get();

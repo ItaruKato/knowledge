@@ -1,115 +1,28 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { collection, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { auth } from './firebase';
 import { Login } from './components/Login';
 import { isOwner } from './lib/owner';
-import type { KbArticle } from './types';
+import { fmtTime } from './lib/format';
+import { linkProps, useRoute } from './lib/router';
+import { useKb } from './data/useKb';
+import { ArticlesPage } from './pages/ArticlesPage';
+import { CasesPage } from './pages/CasesPage';
+import { ThemesPage } from './pages/ThemesPage';
 
-const fmtTime = (s?: string) =>
-  s ? new Date(s).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-const fmtDate = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }) : '');
-
-function ArticleCard({ a }: { a: KbArticle }) {
-  const k = a.kb;
-  return (
-    <article className="card kbcard">
-      <div className="badges">
-        {k?.isCase && <span className="badge case">事例</span>}
-        {k?.industry && <span className="badge">{k.industry}</span>}
-        {k?.stage && k.stage !== '不明' && <span className="badge">{k.stage}</span>}
-        {a.stars > 0 && <span className="stars">{'★'.repeat(a.stars)}</span>}
-        {!k && <span className="badge wait">{a.state === 'failed' ? '整理をやり直し中' : '整理待ち'}</span>}
-      </div>
-      <a className="ttl" href={a.url} target="_blank" rel="noreferrer">
-        {k?.caseTitle || a.title}
-      </a>
-      <small className="sub">
-        {a.company} · {fmtDate(a.publishedAt)}
-        {k?.caseTitle ? ` · ${a.title}` : ''}
-      </small>
-      {(k?.caseSummary || a.draft?.summary) && <p className="sum">{k?.caseSummary || a.draft?.summary}</p>}
-      {k && k.challenges.length > 0 && (
-        <p className="line">
-          <b>課題・狙い</b> {k.challenges.join('・')}
-          {k.challengeNote ? `：${k.challengeNote}` : ''}
-        </p>
-      )}
-      {k && k.talk.length > 0 && (
-        <ul className="talk">
-          {k.talk.map((t, i) => (
-            <li key={i}>{t}</li>
-          ))}
-        </ul>
-      )}
-      {a.memo && <p className="memo">{a.memo}</p>}
-      {a.analyzedAt && (
-        <small className="ver">
-          AIの整理 v{a.analysisV ?? 1} · {fmtTime(a.analyzedAt)}
-        </small>
-      )}
-      {a.themes && a.themes.length > 0 && (
-        <div className="chips">
-          {a.themes.map((t) => (
-            <span key={t} className="chip">
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
-    </article>
-  );
-}
-
-interface IngestStatus {
-  startedAt?: string;
-  lastRunAt?: string;
-  lastError?: string | null;
-  lastErrorAt?: string;
-  last?: Record<string, number>;
-}
-
-/** 取り込み（10分ごと）の様子。うまく動いていないときに気づけるように */
-function StatusLine({ s }: { s: IngestStatus }) {
-  const running = s.startedAt && (!s.lastRunAt || s.startedAt > s.lastRunAt) && Date.now() - new Date(s.startedAt).getTime() < 10 * 60e3;
-  return (
-    <p className="note">
-      {!s.startedAt && !s.lastRunAt && !s.lastError
-        ? '取り込みはまだ一度も動いていません（10分ごとに動きます）。'
-        : running
-          ? `取り込み中です（${fmtTime(s.startedAt)} から。1件に1〜2分かかります）。`
-          : `最後の取り込み：${fmtTime(s.lastRunAt)}${s.last ? `（整理 ${s.last.analyzed ?? 0}・更新 ${s.last.synced ?? 0}・失敗 ${s.last.failed ?? 0}）` : ''}。10分ごとに動きます。`}
-      {s.lastError && <span className="err"> 止まりました（{fmtTime(s.lastErrorAt)}）：{s.lastError}</span>}
-    </p>
-  );
-}
+const TABS = [
+  { path: '/', label: '読んだ記事' },
+  { path: '/cases', label: '先行事例' },
+  { path: '/themes', label: 'ネタ帳' },
+];
 
 function Home({ user }: { user: User }) {
-  const [counts, setCounts] = useState<{ handoff: number; kb: number; themes: number } | null>(null);
-  const [items, setItems] = useState<KbArticle[]>([]);
-  const [status, setStatus] = useState<IngestStatus | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    (async () => {
-      try {
-        const [h, k, t, snap, st] = await Promise.all([
-          getCountFromServer(collection(db, 'handoff')),
-          getCountFromServer(query(collection(db, 'kbArticles'), where('state', '==', 'done'))),
-          getCountFromServer(collection(db, 'kbThemes')),
-          getDocs(query(collection(db, 'kbArticles'), orderBy('readAt', 'desc'), limit(50))),
-          getDoc(doc(db, 'kbMeta', 'ingest')),
-        ]);
-        setStatus((st.data() as IngestStatus | undefined) ?? {});
-        setCounts({ handoff: h.data().count, kb: k.data().count, themes: t.data().count });
-        setItems(snap.docs.map((d) => ({ ...(d.data() as KbArticle), id: d.id })));
-      } catch (e) {
-        setErr(String(e));
-      }
-    })();
-  }, []);
-  const n = (x: number) => x.toLocaleString('ja-JP');
+  const path = useRoute();
+  const { data, error } = useKb();
+  const tab = path.startsWith('/cases') ? '/cases' : path.startsWith('/themes') ? '/themes' : '/';
+  const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
-    <div className="page">
+    <div className={`page ${tab === '/' ? '' : 'wide'}`}>
       <header className="pagehead">
         <b>Knowledge Base</b>
         <span className="meta" title={__COMMIT__ ? `コミット ${__COMMIT__}` : undefined}>
@@ -119,27 +32,18 @@ function Home({ user }: { user: User }) {
           ログアウト
         </button>
       </header>
-      {err && <p className="err">読み込めませんでした：{err}</p>}
-      {counts && (
-        <section className="stats">
-          <div>
-            <span>受け取った記事</span>
-            <b>{n(counts.handoff)}</b>
-          </div>
-          <div>
-            <span>整理した記事</span>
-            <b>{n(counts.kb)}</b>
-          </div>
-          <div>
-            <span>テーマ</span>
-            <b>{n(counts.themes)}</b>
-          </div>
-        </section>
-      )}
-      {status && <StatusLine s={status} />}
-      {items.map((a) => (
-        <ArticleCard key={a.id} a={a} />
-      ))}
+      <nav className="tabs">
+        {TABS.map((t) => (
+          <a key={t.path} aria-current={tab === t.path ? 'page' : undefined} {...linkProps(t.path)}>
+            {t.label}
+          </a>
+        ))}
+      </nav>
+      {error && <p className="err">読み込めませんでした：{error}</p>}
+      {!data && !error && <p className="note">読み込み中…</p>}
+      {data && tab === '/' && <ArticlesPage data={data} />}
+      {data && tab === '/cases' && <CasesPage data={data} />}
+      {data && tab === '/themes' && <ThemesPage data={data} theme={theme} />}
       <footer className="foot">
         Knowledge Base v{__APP_VERSION__}
         {__COMMIT__ ? `（${__COMMIT__}）` : ''} · 最終更新 {fmtTime(__BUILD_TIME__)} · {user.email}

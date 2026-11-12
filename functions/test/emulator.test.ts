@@ -86,6 +86,8 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     expect(seen[0]).toContain('従業員数: 30人');
     const a = (await db.doc(`kbArticles/${ID}`).get()).data()!;
     expect(a).toMatchObject({ state: 'done', bodyFrom: 'page', themes: ['シリーズAの大型調達'], companyId: '12345', memo: 'メモ' });
+    expect(a.body).toBeUndefined();
+    expect((await db.doc(`kbBodies/${ID}`).get()).data()).toMatchObject({ body: '本文です。シリーズAで5億円を調達。', from: 'page' });
     expect((await db.doc('kbThemes/シリーズAの大型調達').get()).data()).toMatchObject({ count: 1, by: 'ai' });
     expect((await db.collection('kbMeta').get()).docs.map((d) => d.id).some((k) => k.startsWith('usage_'))).toBe(true);
 
@@ -120,6 +122,14 @@ describe.skipIf(!HOST)('Firestore エミュレーター', () => {
     const r2 = await ingestSweep({ db, client: fakeClient([out(['テーマ'])]), get: async () => PAGE });
     expect(r2).toMatchObject({ analyzed: 1 });
     expect((await db.doc(`kbArticles/${ID}`).get()).data()).toMatchObject({ state: 'done', bodyFrom: 'page' });
+  });
+
+  it('本文を kbArticles に入れていた記事は、kbBodies へ移す', async () => {
+    await putHandoff();
+    await db.doc(`kbArticles/${ID}`).set({ id: ID, body: '古い本文', bodyFrom: 'page', state: 'done', inputHash: 'x' });
+    await ingestSweep({ db, client: fakeClient([out(['テーマ'])]), get: async () => PAGE });
+    expect((await db.doc(`kbArticles/${ID}`).get()).get('body')).toBeUndefined();
+    expect((await db.doc(`kbBodies/${ID}`).get()).get('body')).toBe('古い本文');
   });
 
   it('同時に2回動いても1回分だけ', async () => {
