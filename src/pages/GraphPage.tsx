@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph3D from '3d-force-graph';
 import ForceGraph from 'force-graph';
 import SpriteText from 'three-spritetext';
+import { Vector3, type SpriteMaterial } from 'three';
 import { around, buildGraph, capitalOf, matchingNodes, neighbors, type GLink, type GNode, type Graph } from '../lib/graph';
 import { fmtDate, n } from '../lib/format';
 import { linkProps, navigate } from '../lib/router';
@@ -55,6 +56,19 @@ function fade(hex: string, bg: string, t = 0.82): string {
   return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * 名前は近づいたときだけ出す（遠くでは重なって読めないため）。
+ * 3D：画面に映る文字の高さが LABEL_PX_FROM（px）で出はじめ、LABEL_PX_FULL 以上ではっきり（読める大きさになったら出す）
+ * 2D：拡大率が LABEL_FROM_2D 以上で出はじめ、LABEL_FULL_2D 以上ではっきり
+ * 押した丸とつながる丸・検索で当たった丸は、遠くても出す。マウスを乗せた丸は小さく名前を出す
+ */
+const LABEL_PX_FROM = 7;
+const LABEL_PX_FULL = 10;
+const LABEL_FROM_2D = 1.2;
+const LABEL_FULL_2D = 2;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
 /** 3D の球の大きさの係数と、球の半径（3d-force-graph と同じ計算：∛val × nodeRelSize） */
 const REL_3D = 3;
 const sphereRadius3d = (val: number) => Math.cbrt(Math.max(0, val)) * REL_3D;
@@ -104,6 +118,12 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
       if (h) return h.has(id);
       return true;
     };
+    /** 遠くても名前を出す丸（押した丸とつながる丸、検索で当たった丸） */
+    const forced = (id: string) => {
+      const { focus: f, hits: h } = look.current;
+      return f ? f.has(id) : h ? h.has(id) : false;
+    };
+    const tooltip = (x: unknown) => `<span class="gtip">${esc((x as GNode).label)}</span>`;
     const nodeColor = (node: GNode) => {
       const c =
         node.kind === 'company'
@@ -139,7 +159,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
       const fg = new ForceGraph3D(el, { controlType: 'orbit' });
       fg.backgroundColor(pal.bg)
         .showNavInfo(false)
-        .nodeLabel(() => '')
+        .nodeLabel(tooltip)
         .nodeVal((x) => (x as GNode).val)
         .nodeRelSize(REL_3D)
         // 球をなめらかに（初期の 8 分割だと角ばって凸凹に見える）。透けると重なりがまだらに見えるので不透明に
@@ -155,6 +175,22 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           s.fontWeight = node.kind === 'company' ? '700' : '500';
           // 名前は自分の球に重ならないよう、球の大きさ（半径 = ∛大きさ × REL_3D）の分だけ真下に離す
           s.position.y = -(sphereRadius3d(node.val) + s.textHeight * 1.05);
+          // 近づいたときだけ名前を出す（描くたびにカメラとの距離で濃さを決める）
+          const mat = s.material as SpriteMaterial;
+          mat.transparent = true;
+          mat.depthWrite = false;
+          const at = new Vector3();
+          s.onBeforeRender = (renderer, _sc, camera) => {
+            if (forced(node.id)) {
+              mat.opacity = 1;
+              return;
+            }
+            // 画面に映る文字の高さ（px）= 文字の高さ × 画面の高さ ÷（2 × 距離 × tan(視野角/2)）
+            const d = Math.max(1, camera.position.distanceTo(s.getWorldPosition(at)));
+            const fov = ((camera as { fov?: number }).fov ?? 40) * (Math.PI / 180);
+            const px = (s.textHeight * renderer.domElement.clientHeight) / (2 * d * Math.tan(fov / 2));
+            mat.opacity = clamp01((px - LABEL_PX_FROM) / (LABEL_PX_FULL - LABEL_PX_FROM));
+          };
           return s;
         })
         .linkColor((l) => linkColor(l as GLink))
@@ -166,13 +202,16 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
     } else {
       const fg = new ForceGraph(el);
       fg.backgroundColor(pal.bg)
-        .nodeLabel(() => '')
+        .nodeLabel(tooltip)
         .nodeVal((x) => (x as GNode).val)
         .nodeRelSize(4)
         .nodeColor((x) => nodeColor(x as GNode))
         .nodeCanvasObjectMode(() => 'after')
         .nodeCanvasObject((x, ctx, scale) => {
           const node = x as GNode & { x: number; y: number };
+          // 近づいた（拡大した）ときだけ名前を出す
+          const alpha = forced(node.id) ? 1 : clamp01((scale - LABEL_FROM_2D) / (LABEL_FULL_2D - LABEL_FROM_2D));
+          if (alpha <= 0.02) return;
           const size = (node.kind === 'company' ? 13 : 11) / scale;
           ctx.font = `${node.kind === 'company' ? 700 : 500} ${size}px "IBM Plex Sans JP", sans-serif`;
           ctx.textAlign = 'center';
@@ -180,7 +219,9 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
           ctx.fillStyle = lit(node.id) ? pal.text : fade(pal.text, pal.bg, 0.85);
           // 名前は自分の丸に重ならないよう、丸の半径（√大きさ × 4）の下に置く
           const r = Math.sqrt(Math.max(0, node.val)) * 4;
+          ctx.globalAlpha = alpha;
           ctx.fillText(node.label.length > 18 ? node.label.slice(0, 17) + '…' : node.label, node.x, node.y + r + 3 / scale);
+          ctx.globalAlpha = 1;
         })
         .linkColor((l) => linkColor(l as GLink))
         .linkWidth((l) => ((l as GLink).kind === 'capital' ? 2.6 : (l as GLink).kind === 'business' ? 1.4 : 0.6))
@@ -316,7 +357,7 @@ export default function GraphPage({ data, q }: { data: KbData; q: string }) {
                 会社と会社を直接結ぶ赤い線は<b>資本関係</b>（出資・買収・子会社化・資本業務提携など。2D の矢印は、出資・買収する側 → される側）だけです。ビジネスが似ている会社は、オレンジの<b>ビジネス</b>の丸を間にはさんでつながります。丸を押すと、つながる丸だけが光り、ここに要点が出ます。
               </p>
               {noBusiness && <p className="note">ビジネスと資本関係は、会社の AI のまとめを作り直すと出てきます（自動で1社ずつ進めています）。</p>}
-              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}何もない所を押すと光りが消え、右上の「全体を表示」で拡大・回転も元に戻ります。</p>
+              <p className="note">{mode === '3d' ? 'ドラッグで回す・ホイール（2本指）で近づく。' : 'ドラッグで動かす・ホイール（2本指）で拡大。'}名前は近づいたときだけ出ます（丸にマウスを乗せても出ます）。何もない所を押すと光りが消え、右上の「全体を表示」で拡大・回転も元に戻ります。</p>
               <b className="lbl">丸の色</b>
               <ul className="legend">
                 <li>
