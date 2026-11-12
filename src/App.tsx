@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth } from './firebase';
 import { Login } from './components/Login';
@@ -7,6 +7,9 @@ import { fmtTime } from './lib/format';
 import { linkProps, useRoute } from './lib/router';
 import { useKb } from './data/useKb';
 import { SearchBox } from './components/SearchBox';
+
+// 3D の部品は大きいので、「つながり」を開いたときだけ読み込む
+const GraphPage = lazy(() => import('./pages/GraphPage'));
 import { ArticlesPage } from './pages/ArticlesPage';
 import { CasesPage } from './pages/CasesPage';
 import { ThemesPage } from './pages/ThemesPage';
@@ -18,6 +21,7 @@ const TABS = [
   { path: '/cases', label: '先行事例' },
   { path: '/themes', label: 'ネタ帳' },
   { path: '/companies', label: '会社' },
+  { path: '/graph', label: 'つながり' },
 ];
 
 const PLACEHOLDER: Record<string, string> = {
@@ -25,6 +29,7 @@ const PLACEHOLDER: Record<string, string> = {
   '/cases': '事例を探す（会社・見出し・メモ・トーク例…）',
   '/themes': 'テーマ・ネタを探す',
   '/companies': '会社を探す（会社名・業界）',
+  '/graph': 'つながりの中で探す（当てはまる丸を光らせる）',
 };
 
 function Home({ user }: { user: User }) {
@@ -38,11 +43,13 @@ function Home({ user }: { user: User }) {
       ? '/themes'
       : path.startsWith('/companies') || path.startsWith('/c/')
         ? '/companies'
-        : '/';
+        : path.startsWith('/graph')
+          ? '/graph'
+          : '/';
   const cid = /^\/c\/(\d{1,12})$/.exec(path)?.[1] ?? null;
   const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
-    <div className={`page ${tab === '/' ? '' : 'wide'}`}>
+    <div className={`page ${tab === '/' ? '' : 'wide'} ${tab === '/graph' ? 'full' : ''}`}>
       <header className="pagehead">
         <b>Knowledge Base</b>
         <span className="meta" title={__COMMIT__ ? `コミット ${__COMMIT__}` : undefined}>
@@ -65,6 +72,11 @@ function Home({ user }: { user: User }) {
       {data && tab === '/' && <ArticlesPage data={data} q={q} />}
       {data && tab === '/cases' && <CasesPage data={data} q={q} />}
       {data && tab === '/themes' && <ThemesPage data={data} theme={theme} q={q} />}
+      {data && tab === '/graph' && (
+        <Suspense fallback={<p className="note">つながりの図を読み込み中…</p>}>
+          <GraphPage data={data} q={q} />
+        </Suspense>
+      )}
       {data && tab === '/companies' && (cid ? <CompanyPage data={data} cid={cid} q={q} /> : <CompaniesPage data={data} q={q} />)}
       <footer className="foot">
         Knowledge Base v{__APP_VERSION__}
