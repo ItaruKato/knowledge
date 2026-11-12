@@ -197,6 +197,7 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
       themes: out.themes.map((t) => t.name),
       model,
       analyzedAt: new Date().toISOString(),
+      analysisV: ANALYSIS_V,
       inputHash: hash,
       state: 'done',
     });

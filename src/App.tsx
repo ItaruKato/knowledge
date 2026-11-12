@@ -6,6 +6,8 @@ import { Login } from './components/Login';
 import { isOwner } from './lib/owner';
 import type { KbArticle } from './types';
 
+const fmtTime = (s?: string) =>
+  s ? new Date(s).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 const fmtDate = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }) : '');
 
 function ArticleCard({ a }: { a: KbArticle }) {
@@ -41,6 +43,11 @@ function ArticleCard({ a }: { a: KbArticle }) {
         </ul>
       )}
       {a.memo && <p className="memo">{a.memo}</p>}
+      {a.analyzedAt && (
+        <small className="ver">
+          AIの整理 v{a.analysisV ?? 1} · {fmtTime(a.analyzedAt)}
+        </small>
+      )}
       {a.themes && a.themes.length > 0 && (
         <div className="chips">
           {a.themes.map((t) => (
@@ -61,8 +68,6 @@ interface IngestStatus {
   lastErrorAt?: string;
   last?: Record<string, number>;
 }
-
-const fmtTime = (s?: string) => (s ? new Date(s).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 /** 取り込み（10分ごと）の様子。うまく動いていないときに気づけるように */
 function StatusLine({ s }: { s: IngestStatus }) {
@@ -107,7 +112,9 @@ function Home({ user }: { user: User }) {
     <div className="page">
       <header className="pagehead">
         <b>Knowledge Base</b>
-        <span className="meta">読んだ記事</span>
+        <span className="meta" title={__COMMIT__ ? `コミット ${__COMMIT__}` : undefined}>
+          v{__APP_VERSION__} · 最終更新 {fmtTime(__BUILD_TIME__)}
+        </span>
         <button className="ghost" type="button" onClick={() => signOut(auth)}>
           ログアウト
         </button>
@@ -133,7 +140,10 @@ function Home({ user }: { user: User }) {
       {items.map((a) => (
         <ArticleCard key={a.id} a={a} />
       ))}
-      <footer className="foot">{user.email}</footer>
+      <footer className="foot">
+        Knowledge Base v{__APP_VERSION__}
+        {__COMMIT__ ? `（${__COMMIT__}）` : ''} · 最終更新 {fmtTime(__BUILD_TIME__)} · {user.email}
+      </footer>
     </div>
   );
 }

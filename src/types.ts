@@ -12,6 +12,9 @@ export interface KbArticle {
   stars: number;
   draft: { summary?: string; angles?: string[]; industry?: string } | null;
   state?: 'done' | 'failed';
+  /** AI で整理した日時と、整理のしかたの版（functions/src/analyze.ts の ANALYSIS_V） */
+  analyzedAt?: string;
+  analysisV?: number;
   themes?: string[];
   kb?: {
     industry: string;

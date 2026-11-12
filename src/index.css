@@ -74,3 +74,4 @@ button{font:inherit;color:inherit;cursor:pointer}
 .chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--ink-2);background:var(--surface)}
 .foot{color:var(--ink-3);font-size:11px;text-align:center;padding:8px 0}
 @media (max-width:520px){.stats b{font-size:18px}.page{padding:14px 12px}}
+.ver{color:var(--ink-3);font-size:11px}

@@ -40,6 +40,7 @@
   - 整理し直すのはタイトル・メモ・自分用タグが変わったときだけ（★・読んだ日時・Watcher の下書きだけなら写すだけ）。整理のしかたを変えたら `functions/src/analyze.ts` の `ANALYSIS_V` を上げる
   - 読了を取り消した記事は外す。AI が失敗した記事は次の回にやり直す（3回まで）
   - 使った量と費用の見積もりは `kbMeta/usage_{YYYYMMDD}`（ウィークリーで報告する）
+- バージョン：画面の上と下に `v{package.json の version} · 最終更新 {ビルドした日時}`（GitHub Actions のビルドではコミット番号も）。機能を足したら package.json の version を上げる（0.x の2つ目の数字）。各カードには AI の整理の版（`ANALYSIS_V`）と整理した日時
 - テスト：`npm test`（画面）、`cd functions && npm test`（関数）、`cd functions && npm run test:emulator`（Firestore エミュレーター。Java が必要）
 - 自分のデータ：`kbArticles`・`kbCompanies`・`kbThemes`・`kbReports`・`kbMeta`（関数だけが書く）、`kbJobs`（画面からの依頼）、`kbConfig`（画面の設定）。ルールは prtimes-inbox の `firestore.rules` にある。新しいコレクションが要るときは、prtimes-inbox に足してから使う
 
@@ -59,7 +60,7 @@
 - [ ] 画面（事例・ネタ帳）→ 会社ページ → 全記事と検索 → 質問 → レポート → MCP → パートナー
 
 ## データの形（自分のコレクション）
-- `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、body・bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、inputHash、state（done / failed）、tries、error
+- `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、body・bodyFrom（page / lead）、kb（industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error
 - `kbThemes/{テーマ名}`：name、count（入っている記事の数）、service、description、by（ai）、createdAt・updatedAt
 - `kbMeta/ingest`：cursor（handoff の updatedAt と記事ID）、lastRunAt、last（回ごとの件数）、total
 - `kbMeta/usage_{YYYYMMDD}`：モデルごとのトークン数・requests、usd（見積もり）、by（用途ごとの回数）
