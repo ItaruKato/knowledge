@@ -9,6 +9,7 @@ import { ingestSweep } from './ingest';
 import { runJob } from './jobs';
 import { indexSweep } from './allindex';
 import { vertexEmbed } from './vertex';
+import { dailyReport, weeklyReport } from './reports';
 
 /**
  * Knowledge Base の Cloud Functions（codebase: knowledge）。
@@ -50,5 +51,23 @@ export const kbIndexSweep = onSchedule(
   { ...common, schedule: 'every 10 minutes', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey] },
   async () => {
     await indexSweep({ db, client: claude, embed: vertexEmbed, log: (msg, data) => logger.info(msg, data) });
+  },
+);
+
+/** デイリー（毎朝9時に読めるよう 8:55 に作る）：昨日の注目記事と今日の営業ネタ3つ */
+export const kbDailyReport = onSchedule(
+  { ...common, schedule: '55 8 * * *', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey], retryCount: 1 },
+  async () => {
+    const r = await dailyReport({ db, client: claude });
+    logger.info('kb daily report', r);
+  },
+);
+
+/** ウィークリー（日曜21時に読めるよう 20:55 に作る）：今週のふりかえり・事例ベスト・来週動くとよい会社・AI の費用 */
+export const kbWeeklyReport = onSchedule(
+  { ...common, schedule: '55 20 * * 0', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey], retryCount: 1 },
+  async () => {
+    const r = await weeklyReport({ db, client: claude });
+    logger.info('kb weekly report', r);
   },
 );

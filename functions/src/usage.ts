@@ -11,6 +11,11 @@ export interface Usage {
 /** 1M トークンあたりのドル（https://platform.claude.com/docs/en/about-claude/pricing、2026-11 時点） */
 export const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
   'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+  // 拒否されたときの代わりのモデル（Opus 相当で数える）
+  'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  'claude-opus-4-8': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
 };
 
 export function usageOf(

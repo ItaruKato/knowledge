@@ -17,6 +17,7 @@ import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyPage } from './pages/CompanyPage';
 import { AllPage } from './pages/AllPage';
 import { AskPage } from './pages/AskPage';
+import { ReportsPage } from './pages/ReportsPage';
 
 const TABS = [
   { path: '/', label: '読んだ記事' },
@@ -26,6 +27,7 @@ const TABS = [
   { path: '/graph', label: 'つながり' },
   { path: '/all', label: '全記事' },
   { path: '/ask', label: '質問' },
+  { path: '/reports', label: 'レポート' },
 ];
 
 const PLACEHOLDER: Record<string, string> = {
@@ -56,7 +58,9 @@ function Home({ user }: { user: User }) {
             ? '/all'
             : path.startsWith('/ask')
               ? '/ask'
-              : '/';
+              : path.startsWith('/reports')
+                ? '/reports'
+                : '/';
   const cid = /^\/c\/(\d{1,12})$/.exec(path)?.[1] ?? null;
   const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
@@ -78,7 +82,7 @@ function Home({ user }: { user: User }) {
         ))}
       </nav>
       {/* 質問のタブには自分の入力欄があるので、上の検索窓は出さない */}
-      {tab !== '/ask' && (
+      {tab !== '/ask' && tab !== '/reports' && (
         <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} onSubmit={tab === '/all' ? () => setSubmitSeq((x) => x + 1) : undefined} />
       )}
       {error && <p className="err">読み込めませんでした：{error}</p>}
@@ -88,6 +92,7 @@ function Home({ user }: { user: User }) {
       {data && tab === '/themes' && <ThemesPage data={data} theme={theme} q={q} />}
       {data && tab === '/all' && <AllPage data={data} q={q} submitSeq={submitSeq} />}
       {data && tab === '/ask' && <AskPage data={data} />}
+      {data && tab === '/reports' && <ReportsPage data={data} />}
       {data && tab === '/graph' && (
         <Suspense fallback={<p className="note">つながりの図を読み込み中…</p>}>
           <GraphPage data={data} q={q} />

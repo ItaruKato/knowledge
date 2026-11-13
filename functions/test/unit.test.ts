@@ -184,3 +184,12 @@ describe('アプリ内の質問', () => {
     expect(b).toBe('[3] 2026-11-01｜A社｜T｜担当者が読んだ記事\n要約: 要約\n担当者のメモ: M\n本文（抜粋）: 本文');
   });
 });
+
+import { jstDate, jstDayStart } from '../src/reports';
+
+describe('レポートの日付', () => {
+  it('JST の日付とその日の 0:00', () => {
+    expect(jstDate(Date.UTC(2026, 10, 12, 15, 30))).toBe('2026-11-13');
+    expect(new Date(jstDayStart(Date.UTC(2026, 10, 12, 15, 30))).toISOString()).toBe('2026-11-12T15:00:00.000Z');
+  });
+});

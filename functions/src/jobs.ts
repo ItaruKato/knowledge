@@ -3,6 +3,7 @@ import { FieldValue, Timestamp, type DocumentReference, type Firestore } from 'f
 import { summarizeCompany } from './company';
 import { analyzeIndexed, searchIndex, type SearchFilters } from './search';
 import { askQuestion } from './ask';
+import { dailyReport, weeklyReport } from './reports';
 import type { Embed } from './vertex';
 
 /**
@@ -11,10 +12,12 @@ import type { Embed } from './vertex';
  * - company: 会社ページの AI のまとめ（id: 会社ID、redo: 材料が同じでも作り直す）
  * - search: 全記事を意味で探す（q: 言葉、filters: 期間・種類・事例だけ）。結果は result.hits
  * - analyze: 全記事の検索結果の記事を詳しく整理する（id: 記事ID）。本人がボタンを押したときだけ
+ * - report: レポートを今すぐ作る（kind: daily / weekly）。画面の「今すぐ作る」
  * - ask: アプリ内の質問（q: 質問）。答えは result（answer・sources）。履歴として残す（1日たっても消さない）
  */
 export interface KbJob {
-  type: 'company' | 'search' | 'analyze' | 'ask';
+  type: 'company' | 'search' | 'analyze' | 'ask' | 'report';
+  kind?: 'daily' | 'weekly';
   id?: string;
   redo?: boolean;
   q?: string;
@@ -54,6 +57,11 @@ export async function runJob(deps: JobDeps, ref: DocumentReference): Promise<str
       const hits = await searchIndex(deps.db, deps.embed, String(job.q ?? ''), job.filters ?? {});
       await ref.update({ state: 'done', result: { hits }, doneAt: FieldValue.serverTimestamp() });
       return 'searched';
+    }
+    if (job.type === 'report') {
+      const r = job.kind === 'weekly' ? await weeklyReport(deps) : await dailyReport(deps);
+      await ref.update({ state: 'done', result: r, doneAt: FieldValue.serverTimestamp() });
+      return 'reported';
     }
     if (job.type === 'ask') {
       if (!deps.embed) throw new Error('質問の準備ができていません');

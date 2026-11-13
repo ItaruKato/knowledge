@@ -351,3 +351,6 @@ button.chip:hover { border-color: var(--accent); color: var(--accent); backgroun
 .srcn { font-family: var(--f-mono); font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; text-align: center; height: 24px; line-height: 24px; font-size: 12px; }
 .srcmemo { margin: 4px 0 0; font-size: 13px; color: var(--memo); background: var(--memo-bg); border-radius: 6px; padding: 4px 8px; }
 .fopt.hist span:first-child { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* ---- レポート（v0.15） ---- */
+.neta-list { display: flex; flex-direction: column; gap: 10px; }
+.talkline { margin: 0; font-size: 15.5px; font-weight: 600; line-height: 1.75; color: var(--ink); }

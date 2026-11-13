@@ -37,6 +37,7 @@
 | 知識に入れない記事 | セミナー・勉強会・学習コンテンツ、展示会・イベントの告知、調査レポート・アンケート、キャンペーン・プレゼント、受賞・認定・人事は取り込まない。新規事業・資金調達・M&A・提携・上場などは会社を中心に知識のつながりを作る（2026-11-12 本人の決定） |
 | 全記事（⑤） | 2026-09-01 以降の全記事を Opus で軽く分類（種類・業界・事例らしさ。まとめて処理する仕組みで半額）。詳しい整理（本文＋Opus）は検索結果の「詳しく整理」ボタンを押した記事だけ。検索は新しい「全記事」タブ（2026-11-12 本人の決定） |
 | 質問の履歴 | 残す（2026-11-13、案どおり） |
+| レポート（⑦） | デイリー：昨日の注目記事（5〜10件）と今日の営業ネタ3つ。ウィークリー：今週のふりかえり・事例ベスト・来週動くとよい会社・AI の費用。追っている会社＝Long List の温度感 A・B と、進捗がアプローチ中・商談の会社（注目記事と来週動くとよい会社で優先）。メールは Resend＋送信用サブドメイン（2026-11-13 本人の決定） |
 | まだ決めていない | ネタ1件の形（案：トーク例＋根拠の記事＋数字のカード）、質問の履歴（案：残す）、デイリー・ウィークリーの中身の細部 |
 
 ## 構成
@@ -60,6 +61,7 @@
     - 詳しく整理（kbJobs の analyze）：押した記事だけ。本文を取り、読んだ記事と同じ整理（Opus）をして kbArticles（source: search）に。知識に入れない種類なら外す。「読んだ記事」には出さず、先行事例・ネタ帳・つながり・会社ページに出す
     - Vertex AI は GitHub Actions のデプロイで API を有効にする。関数を動かすアカウント（既定のコンピュートアカウント）に roles/aiplatform.user が要る（本人が Cloud Shell で付ける）
   - 質問（v0.14、functions/src/ask.ts・src/pages/AskPage.tsx）：画面が kbJobs（type: ask, q）に書く → kbJobRun が答える。質問を数値にして kbIndex から近い順に200件 → 知識に入れない記事を除いて24件を根拠に。整理済みの記事は要約・数字・トーク例・メモも、上位6件は本文（kbBodies、なければ記事ページ）も渡す。Opus（effort high）が 結論・根拠の番号つきの要点・メモの引用・記事に基づかない一般的な知識（分けて）・記事だけでは足りないか・次に聞くとよいこと を返す。根拠の番号が渡した記事にない要点は捨てる。ask の依頼は1日たっても消さない（履歴）。読んだ記事は整理したときに kbIndex にも入れる（9月より前の記事も質問で見つかるように）
+  - レポート（v0.15、functions/src/reports.ts・src/pages/ReportsPage.tsx）：`kbDailyReport`（毎日 8:55）が昨日の全記事（kbIndex。知識に入れない記事を除く。多いときは追っている会社・事例らしい記事を先に900件まで）と★の例を Opus に渡し、注目記事と営業ネタを選ぶ。`kbWeeklyReport`（日曜 20:55）が月曜からの件数（種類別・読んだ記事・増えたテーマ）、事業の動きの記事（最大700件）と今週のメモから事例ベスト5・来週動くとよい会社5を選び、AI の費用（kbMeta/usage_日＋Watcher・台帳の aiUsage/日、1ドル=150円）を出す。kbReports/{daily_YYYYMMDD・weekly_YYYYMMDD} に書く。画面の「今すぐ作る」は kbJobs（type: report, kind）。メールはまだ（Resend の準備ができたら足す）
   - 検索窓（v0.8）：タブの下に1つ。言葉はタブを切り替えても残り、× ボタン（または Esc）で一度に消せる。読んだ記事・先行事例・ネタ帳（テーマとネタ）・会社の一覧・会社ページの PR TIMES の記事を絞る。正式な会社名でも探せる
   - 見た目（v0.7）：色の名前は Watcher とそろえ、文字と背景の差を大きくした（補足の文字も 4.5:1 以上）。カードは「課題・狙い」「トーク例」「自分のメモ」に見出しを付け、業界（青）・規模/段階（緑）・課題（黄）で色を分ける
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
@@ -101,7 +103,8 @@
 - [x] セミナー・勉強コンテンツ・告知・調査・キャンペーン・受賞/人事の記事は知識に入れない（タイトルの決まり＋AI の記事の種類）。整理済みの記事も一度見直す（v0.12）
 - [x] 全記事と検索（2026-09-01 以降の目録・Opus の軽い分類・意味で探す・ボタンで詳しく整理）（v0.13）
 - [x] アプリ内の質問（根拠の記事つき・メモの引用・一般知識は分けて・履歴）（v0.14）
-- [ ] レポート（デイリー・ウィークリー）→ MCP → パートナー
+- [x] レポート（デイリー・ウィークリー）をアプリで（v0.15）
+- [ ] レポートのメール（Resend）→ MCP → パートナー
 
 ## データの形（自分のコレクション）
 - `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（articleType・industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error

@@ -150,3 +150,63 @@ describe.skipIf(!HOST)('アプリ内の質問（エミュレーター）', () =>
     expect(r.answer.points[0].cites).toEqual([1]);
   });
 });
+
+import { costBetween, dailyReport } from '../src/reports';
+
+describe.skipIf(!HOST)('レポート（エミュレーター）', () => {
+  beforeEach(async () => {
+    await fetch(`http://${HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+  });
+
+  it('デイリー：昨日の記事から注目記事と営業ネタを選ぶ。追っている会社に印、知識に入れない記事は渡さない', async () => {
+    const put = (id: string, title: string, at: string, extra: Record<string, unknown> = {}) =>
+      db.doc(`kbIndex/${id}`).set({ id, title, company: `会社${id}`, companyId: id.split('.')[1], url: '', publishedAt: at, state: 'done', type: '資金調達', isCase: true, ...extra });
+    await put('1.100', '資金調達A', '2026-11-12T10:00:00+09:00');
+    await put('2.200', '新サービスB', '2026-11-12T23:59:00+09:00');
+    await put('3.300', 'セミナー', '2026-11-12T11:00:00+09:00', { state: 'excluded' });
+    await put('4.400', '前の日', '2026-11-11T23:00:00+09:00');
+    await db.doc('longlist/200').set({ temperature: 'A', progress: '商談' });
+    const seen: string[] = [];
+    const client = () =>
+      ({
+        beta: {
+          messages: {
+            parse: async (req: { messages: { content: string }[] }) => {
+              seen.push(req.messages[0].content);
+              return {
+                model: 'claude-opus-5-5',
+                stop_reason: 'end_turn',
+                usage: { input_tokens: 100, output_tokens: 50 },
+                parsed_output: {
+                  picks: [
+                    { n: 1, reason: '追っている会社の新サービス', service: 'マーケ・営業支援' },
+                    { n: 1, reason: '重なり', service: 'その他' },
+                    { n: 99, reason: '存在しない', service: 'その他' },
+                  ],
+                  netas: [{ talk: 'トーク', to: '経営者', n: 2 }],
+                },
+              };
+            },
+          },
+        },
+      }) as unknown as Anthropic;
+    const r = await dailyReport({ db, client }, Date.UTC(2026, 10, 13, 0, 0));
+    expect(r).toMatchObject({ picks: 1, netas: 1 });
+    expect(seen[0]).toContain('昨日（2026-11-12）の記事 2 件');
+    expect(seen[0]).toContain('[1] 会社2.200｜新サービスB｜資金調達｜追っている会社（温度感A・商談）');
+    expect(seen[0]).not.toContain('セミナー');
+    expect(seen[0]).not.toContain('前の日');
+    const rep = (await db.doc('kbReports/daily_20261112').get()).data()!;
+    expect(rep.picks).toMatchObject([{ id: '2.200', tracked: '温度感A・商談', service: 'マーケ・営業支援' }]);
+    expect(rep.netas).toMatchObject([{ id: '1.100', talk: 'トーク' }]);
+  });
+
+  it('AI の費用：Knowledge Base と Watcher・台帳の分を足す', async () => {
+    await db.doc('kbMeta/usage_20261110').set({ usd: 1.5 });
+    await db.doc('kbMeta/usage_20261201').set({ usd: 9 });
+    await db.doc('aiUsage/20261111').set({ 'claude-opus-5-5': { input: 1_000_000, output: 100_000, cacheRead: 0 } });
+    const c = await costBetween(db, '2026-11-01', '2026-11-30');
+    expect(c.kb).toBeCloseTo(1.5);
+    expect(c.watcher).toBeCloseTo(6);
+  });
+});
