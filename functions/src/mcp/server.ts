@@ -125,12 +125,13 @@ export async function handle(deps: ToolDeps, req: Req): Promise<Res> {
 
     // ---- 窓口 ----
     if (p === '/mcp') {
-      if (req.method !== 'POST') return { status: 405, headers: { Allow: 'POST' } };
+      // 合鍵がなければ、どの呼び方でも「ログインが要る」と案内する（Claude は最初に GET などで確かめることがある）
       const auth = req.headers.authorization;
       if (!(await checkBearer(db, auth)))
         return json(401, { error: 'unauthorized' }, {
           'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource", scope="kb.read"${auth ? ', error="invalid_token"' : ''}`,
         });
+      if (req.method !== 'POST') return { status: 405, headers: { Allow: 'POST' } };
       if (!(await rateOk(db))) return json(429, { jsonrpc: '2.0', id: null, error: { code: -32000, message: '使いすぎです。少し待ってください' } });
       const body = req.body;
       const msgs = Array.isArray(body) ? body : [body];

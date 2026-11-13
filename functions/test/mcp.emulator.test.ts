@@ -32,6 +32,8 @@ describe.skipIf(!HOST)('Claude の窓口（エミュレーター）', () => {
     const r0 = await call({ method: 'POST', path: '/mcp', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } });
     expect(r0.status).toBe(401);
     expect(r0.headers?.['WWW-Authenticate']).toContain(`resource_metadata="https://${ME}/.well-known/oauth-protected-resource"`);
+    // GET でも合鍵がなければ 401
+    expect((await call({ method: 'GET', path: '/mcp' })).status).toBe(401);
     expect((await call({ path: '/.well-known/oauth-protected-resource' })).body).toMatchObject({ resource: `https://${ME}/mcp`, authorization_servers: [`https://${ME}`] });
     expect((await call({ path: '/.well-known/oauth-authorization-server' })).body).toMatchObject({ code_challenge_methods_supported: ['S256'] });
 
