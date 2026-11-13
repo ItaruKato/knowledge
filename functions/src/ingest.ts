@@ -95,6 +95,9 @@ async function exclude(
 ) {
   if (prevThemes.length) await applyThemes(db, themes, prevThemes, []);
   await db.collection('kbBodies').doc(h.id).delete();
+  // 全記事の目録にあれば、知識に入れない印に（検索・質問に出さない）
+  const ix = db.collection('kbIndex').doc(h.id);
+  if ((await ix.get()).exists) await ix.update({ state: 'excluded', type, excludedBy: by, emb: FieldValue.delete(), needsEmb: FieldValue.delete(), needsCls: FieldValue.delete() });
   await db.collection('kbArticles').doc(h.id).set({
     v: 1,
     id: h.id,
@@ -109,6 +112,33 @@ async function exclude(
   });
   // 前は知識に入っていた記事なら、会社のまとめも作り直す
   if (existing.get('state') === 'done') await addJob(db, { type: 'company', id: companyIdOf(h.id), by: 'exclude' });
+}
+
+/** 読んだ記事を全記事の目録（kbIndex）に入れる。まだ数値になっていなければ数値にする印を付ける */
+async function toIndex(db: Firestore, h: Handoff, out: AnalysisOut) {
+  const ref = db.collection('kbIndex').doc(h.id);
+  const cur = await ref.get();
+  const a = h.article ?? {};
+  await ref.set(
+    {
+      id: h.id,
+      title: (a.title ?? '').slice(0, 200),
+      company: (a.company ?? '').slice(0, 100),
+      companyId: companyIdOf(h.id),
+      url: a.url ?? '',
+      publishedAt: a.publishedAt ?? '',
+      lead: (a.lead ?? '').slice(0, 200),
+      state: 'done',
+      type: out.articleType ?? 'その他',
+      industry: (cur.get('industryFrom') === 'ledger' ? cur.get('industry') : out.industry) ?? '',
+      industryFrom: cur.get('industryFrom') === 'ledger' ? 'ledger' : 'ai',
+      isCase: out.isCase ?? false,
+      needsCls: FieldValue.delete(),
+      ...(cur.get('emb') ? {} : { needsEmb: true }),
+      at: new Date().toISOString(),
+    },
+    { merge: true },
+  );
 }
 
 type Outcome = 'analyzed' | 'synced' | 'removed' | 'failed' | 'skipped' | 'excluded';
@@ -242,6 +272,8 @@ async function ingestOne(deps: IngestDeps, h: Handoff, themes: Map<string, numbe
       inputHash: hash,
       state: 'done',
     });
+    // 全記事の目録にも入れる（質問・全記事の検索で見つかるように。9月より前に配信された記事も）
+    await toIndex(db, h, out);
     // 会社ページのまとめを作り直す（依頼を書くと、すぐ動く関数が処理する）
     await addJob(db, { type: 'company', id: companyIdOf(h.id), by: 'ingest' });
     return 'analyzed';
@@ -280,6 +312,21 @@ export async function ingestSweep(deps: IngestDeps) {
     let cursor = (meta.cursor as { at: string; id: string } | undefined) ?? null;
     const themes = await loadThemes(db);
     const counts: Record<Outcome, number> = { analyzed: 0, synced: 0, removed: 0, failed: 0, skipped: 0, excluded: 0 };
+
+    // 0-1. 一度だけ：これまでに整理した記事を全記事の目録に入れる（質問・全記事の検索で見つかるように）
+    if (!meta.readsIndexed) {
+      const done = await db.collection('kbArticles').where('state', '==', 'done').get();
+      for (const d of done.docs) {
+        const x = d.data();
+        if (!x.kb) continue;
+        await toIndex(
+          db,
+          { id: d.id, article: { title: x.title, company: x.company, url: x.url, publishedAt: x.publishedAt, lead: x.draft?.summary ?? '' } },
+          { ...(x.kb as AnalysisOut), articleType: (x.kb as AnalysisOut).articleType ?? 'その他' },
+        );
+      }
+      await metaRef.set({ readsIndexed: true }, { merge: true });
+    }
 
     // 0. 本文を kbArticles に入れていたころ（v0.3 まで）の記事は、本文を kbBodies へ移す
     const withBody = await db.collection('kbArticles').orderBy('body').limit(50).get();

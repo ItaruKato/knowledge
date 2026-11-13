@@ -150,3 +150,37 @@ describe('全記事の目録と検索', () => {
     expect(passes({ state: 'new', publishedAt: d.publishedAt }, {}, now)).toBe(true);
   });
 });
+
+import { sourceBlock, tidyAnswer } from '../src/ask';
+
+describe('アプリ内の質問', () => {
+  it('根拠の番号が渡した記事にない要点は捨てる。メモの引用も同じ', () => {
+    const a = tidyAnswer(
+      {
+        conclusion: ' 結論 ',
+        points: [
+          { text: '根拠あり', cites: [1, 1, 9] },
+          { text: '根拠なし', cites: [9] },
+        ],
+        memoQuotes: [
+          { n: 2, quote: 'メモ' },
+          { n: 7, quote: '存在しない' },
+        ],
+        general: '一般的には…',
+        insufficient: false,
+        followups: ['次の質問'],
+      },
+      new Set([1, 2]),
+    );
+    expect(a.conclusion).toBe('結論');
+    expect(a.points).toEqual([{ text: '根拠あり', cites: [1] }]);
+    expect(a.memoQuotes).toEqual([{ n: 2, quote: 'メモ' }]);
+  });
+  it('記事の材料には番号・日付・会社・読んだ印・メモ・本文を入れる', () => {
+    const b = sourceBlock(
+      { n: 3, id: '1.2', title: 'T', company: 'A社', companyId: '2', url: '', publishedAt: '2026-11-01T10:00:00+09:00', read: true, analyzed: true, memo: 'M', score: 0.8 },
+      { caseSummary: '要約', body: '本文' },
+    );
+    expect(b).toBe('[3] 2026-11-01｜A社｜T｜担当者が読んだ記事\n要約: 要約\n担当者のメモ: M\n本文（抜粋）: 本文');
+  });
+});

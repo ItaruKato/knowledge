@@ -16,6 +16,7 @@ import { ThemesPage } from './pages/ThemesPage';
 import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyPage } from './pages/CompanyPage';
 import { AllPage } from './pages/AllPage';
+import { AskPage } from './pages/AskPage';
 
 const TABS = [
   { path: '/', label: '読んだ記事' },
@@ -24,6 +25,7 @@ const TABS = [
   { path: '/companies', label: '会社' },
   { path: '/graph', label: 'つながり' },
   { path: '/all', label: '全記事' },
+  { path: '/ask', label: '質問' },
 ];
 
 const PLACEHOLDER: Record<string, string> = {
@@ -52,7 +54,9 @@ function Home({ user }: { user: User }) {
           ? '/graph'
           : path.startsWith('/all')
             ? '/all'
-            : '/';
+            : path.startsWith('/ask')
+              ? '/ask'
+              : '/';
   const cid = /^\/c\/(\d{1,12})$/.exec(path)?.[1] ?? null;
   const theme = path.startsWith('/themes/') ? path.slice('/themes/'.length) || null : null;
   return (
@@ -73,13 +77,17 @@ function Home({ user }: { user: User }) {
           </a>
         ))}
       </nav>
-      <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} onSubmit={tab === '/all' ? () => setSubmitSeq((x) => x + 1) : undefined} />
+      {/* 質問のタブには自分の入力欄があるので、上の検索窓は出さない */}
+      {tab !== '/ask' && (
+        <SearchBox value={q} onChange={setQ} placeholder={PLACEHOLDER[tab]} onSubmit={tab === '/all' ? () => setSubmitSeq((x) => x + 1) : undefined} />
+      )}
       {error && <p className="err">読み込めませんでした：{error}</p>}
       {!data && !error && <p className="note">読み込み中…</p>}
       {data && tab === '/' && <ArticlesPage data={data} q={q} />}
       {data && tab === '/cases' && <CasesPage data={data} q={q} />}
       {data && tab === '/themes' && <ThemesPage data={data} theme={theme} q={q} />}
       {data && tab === '/all' && <AllPage data={data} q={q} submitSeq={submitSeq} />}
+      {data && tab === '/ask' && <AskPage data={data} />}
       {data && tab === '/graph' && (
         <Suspense fallback={<p className="note">つながりの図を読み込み中…</p>}>
           <GraphPage data={data} q={q} />

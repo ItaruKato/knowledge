@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { FieldValue, Timestamp, type DocumentReference, type Firestore } from 'firebase-admin/firestore';
 import { summarizeCompany } from './company';
 import { analyzeIndexed, searchIndex, type SearchFilters } from './search';
+import { askQuestion } from './ask';
 import type { Embed } from './vertex';
 
 /**
@@ -10,9 +11,10 @@ import type { Embed } from './vertex';
  * - company: 会社ページの AI のまとめ（id: 会社ID、redo: 材料が同じでも作り直す）
  * - search: 全記事を意味で探す（q: 言葉、filters: 期間・種類・事例だけ）。結果は result.hits
  * - analyze: 全記事の検索結果の記事を詳しく整理する（id: 記事ID）。本人がボタンを押したときだけ
+ * - ask: アプリ内の質問（q: 質問）。答えは result（answer・sources）。履歴として残す（1日たっても消さない）
  */
 export interface KbJob {
-  type: 'company' | 'search' | 'analyze';
+  type: 'company' | 'search' | 'analyze' | 'ask';
   id?: string;
   redo?: boolean;
   q?: string;
@@ -53,6 +55,12 @@ export async function runJob(deps: JobDeps, ref: DocumentReference): Promise<str
       await ref.update({ state: 'done', result: { hits }, doneAt: FieldValue.serverTimestamp() });
       return 'searched';
     }
+    if (job.type === 'ask') {
+      if (!deps.embed) throw new Error('質問の準備ができていません');
+      const r = await askQuestion({ db: deps.db, client: deps.client, embed: deps.embed }, String(job.q ?? ''));
+      await ref.update({ state: 'done', result: r, doneAt: FieldValue.serverTimestamp() });
+      return 'answered';
+    }
     if (job.type === 'analyze') {
       if (!AID_RE.test(job.id ?? '')) throw new Error('記事IDが正しくありません');
       const r = await analyzeIndexed(deps, job.id!);
@@ -82,7 +90,8 @@ export async function jobSweep(deps: JobDeps, until: number) {
   const old = await db.collection('kbJobs').where('at', '<', Timestamp.fromMillis(Date.now() - KEEP_MS)).limit(200).get();
   if (!old.empty) {
     const b = db.batch();
-    for (const o of old.docs) b.delete(o.ref);
+    // 質問（ask）は履歴として残す
+    for (const o of old.docs) if (o.get('type') !== 'ask') b.delete(o.ref);
     await b.commit();
   }
   return { ran, cleaned: old.size };

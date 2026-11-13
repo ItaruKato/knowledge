@@ -100,3 +100,53 @@ describe.skipIf(!HOST)('全記事の目録と検索（エミュレーター）',
     expect((await searchIndex(db, embed, '資金調達', { types: ['新規事業・新商品・新サービス'] })).map((h) => h.id)).toEqual(['2.200']);
   });
 });
+
+import { askQuestion } from '../src/ask';
+
+describe.skipIf(!HOST)('アプリ内の質問（エミュレーター）', () => {
+  beforeEach(async () => {
+    await fetch(`http://${HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+  });
+
+  it('近い記事と読んだ記事のメモ・本文を根拠に、番号つきで答える', async () => {
+    const { FieldValue } = await import('firebase-admin/firestore');
+    const [v1] = await embed(['資金調達'], 'RETRIEVAL_DOCUMENT');
+    const [v2] = await embed(['物流'], 'RETRIEVAL_DOCUMENT');
+    await db.doc('kbIndex/1.100').set({ id: '1.100', title: 'シリーズAで資金調達', company: 'A社', companyId: '100', url: '', publishedAt: '2026-11-01T10:00:00+09:00', lead: '冒頭', state: 'done', emb: FieldValue.vector(v1) });
+    await db.doc('kbIndex/2.200').set({ id: '2.200', title: '物流の新サービス', company: 'B社', companyId: '200', url: '', publishedAt: '2026-11-02T10:00:00+09:00', state: 'done', emb: FieldValue.vector(v2) });
+    await db.doc('kbIndex/3.300').set({ id: '3.300', title: 'セミナー', state: 'excluded', emb: FieldValue.vector(v1) });
+    await db.doc('kbArticles/1.100').set({ state: 'done', source: 'handoff', memo: '次回提案', kb: { caseSummary: '5億円を調達', facts: [{ label: '調達額', value: '5億円' }], talk: [] } });
+    await db.doc('kbBodies/1.100').set({ body: '本文です' });
+    const seen: string[] = [];
+    const client = () =>
+      ({
+        beta: {
+          messages: {
+            parse: async (req: { messages: { content: string }[] }) => {
+              seen.push(req.messages[0].content);
+              return {
+                model: 'claude-opus-5-5',
+                stop_reason: 'end_turn',
+                usage: { input_tokens: 100, output_tokens: 50 },
+                parsed_output: {
+                  conclusion: 'A社が調達',
+                  points: [{ text: 'A社はシリーズAで5億円', cites: [1] }],
+                  memoQuotes: [{ n: 1, quote: '次回提案' }],
+                  general: '',
+                  insufficient: false,
+                  followups: [],
+                },
+              };
+            },
+          },
+        },
+      }) as unknown as Anthropic;
+    const r = await askQuestion({ db, client, embed }, '資金調達の事例は？');
+    expect(seen[0]).toContain('[1] 2026-11-01｜A社｜シリーズAで資金調達｜担当者が読んだ記事');
+    expect(seen[0]).toContain('担当者のメモ: 次回提案');
+    expect(seen[0]).toContain('本文（抜粋）: 本文です');
+    expect(seen[0]).not.toContain('セミナー');
+    expect(r.sources[0]).toMatchObject({ n: 1, id: '1.100', read: true, analyzed: true });
+    expect(r.answer.points[0].cites).toEqual([1]);
+  });
+});
