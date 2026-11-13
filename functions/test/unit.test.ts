@@ -193,3 +193,23 @@ describe('レポートの日付', () => {
     expect(new Date(jstDayStart(Date.UTC(2026, 10, 12, 15, 30))).toISOString()).toBe('2026-11-12T15:00:00.000Z');
   });
 });
+
+import { dailyMail, weeklyMail } from '../src/mail';
+
+describe('レポートのメール', () => {
+  it('文字は HTML として安全に、リンクは PR TIMES の記事と自分のアプリだけ', () => {
+    const m = dailyMail({
+      date: '2026-11-12',
+      picks: [{ title: '<script>x</script>', company: 'A社', companyId: '100', url: 'https://prtimes.jp/main/html/rd/p/1.100.html', reason: '理由', service: '資金調達・M&A支援', tracked: '温度感A' }],
+      netas: [{ talk: 'トーク', to: '経営者', title: '悪い住所', company: 'B社', companyId: '200', url: 'javascript:alert(1)' }],
+      counts: { articles: 10 },
+    });
+    expect(m.subject).toBe('デイリー 2026-11-12：注目記事 1件と今日の営業ネタ');
+    expect(m.html).toContain('&lt;script&gt;');
+    expect(m.html).not.toContain('<script>');
+    expect(m.html).not.toContain('javascript:');
+    expect(m.html).toContain('https://prtimes-knowledge.web.app/c/100');
+    expect(m.text).toContain('・トーク（話す相手：経営者／根拠：悪い住所）');
+    expect(weeklyMail({ date: '2026-11-15', from: '2026-11-09', cost: { usdJpy: 150, week: { kb: 1, watcher: 2 }, month: { kb: 10, watcher: 20 } } }).text).toContain('今月の合計 約4,500円');
+  });
+});

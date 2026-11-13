@@ -33,6 +33,15 @@ interface Report {
   best?: (Art & { why: string })[];
   companies?: (Art & { reason: string; service: string; action: string })[];
   cost?: { usdJpy: number; week: { kb: number; watcher: number }; month: { kb: number; watcher: number } };
+  emailedAt?: string;
+  emailError?: string | null;
+}
+
+/** メールで届けたか（届かなかったときは理由） */
+function MailLine({ r }: { r: Report }) {
+  if (r.emailError) return <small className="err">メールを送れませんでした：{r.emailError}</small>;
+  if (r.emailedAt) return <small className="ver">{fmtTime(r.emailedAt)} にメールで送りました（本人あて）</small>;
+  return null;
 }
 
 function ArtLine({ a, data }: { a: Art; data: KbData }) {
@@ -57,6 +66,7 @@ function Daily({ r, data }: { r: Report; data: KbData }) {
         <small className="sub">
           昨日の記事 {n(r.counts?.articles ?? 0)} 件から · {fmtTime(r.at)} に作成
         </small>
+        <MailLine r={r} />
       </header>
       {r.note && <p className="note">{r.note}</p>}
       {(r.netas ?? []).length > 0 && (
@@ -112,6 +122,7 @@ function Weekly({ r, data }: { r: Report; data: KbData }) {
           ウィークリー：{r.from} 〜 {r.date}
         </h2>
         <small className="sub">{fmtTime(r.at)} に作成</small>
+        <MailLine r={r} />
       </header>
       <section className="card">
         <h3>今週のふりかえり</h3>
@@ -260,7 +271,7 @@ export function ReportsPage({ data }: { data: KbData }) {
         <button type="button" className="ghost" disabled={Boolean(busy)} onClick={() => void make('weekly')}>
           ウィークリーを今すぐ作る
         </button>
-        {busy && <p className="note">作っています…（1〜3分。1回 数十円）</p>}
+        {busy && <p className="note">作っています…（1〜3分。1回 数十円。できたらメールでも送ります）</p>}
         {job?.state === 'failed' && <p className="err">作れませんでした：{job.error}</p>}
         {reports.length === 0 && <p className="note">まだレポートがありません。</p>}
         {reports.map((r) => (

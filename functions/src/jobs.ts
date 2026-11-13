@@ -5,6 +5,7 @@ import { analyzeIndexed, searchIndex, type SearchFilters } from './search';
 import { askQuestion } from './ask';
 import { dailyReport, weeklyReport } from './reports';
 import type { Embed } from './vertex';
+import type { SendMail } from './mail';
 
 /**
  * 画面からの依頼（kbJobs/{自動ID}）。画面から関数を直接呼ばない（外から呼べる入口を作らない）ため、依頼は Firestore に書いてもらう。
@@ -28,7 +29,7 @@ export interface KbJob {
 
 const CID_RE = /^\d{1,12}$/;
 const AID_RE = /^\d+\.\d+$/;
-type JobDeps = { db: Firestore; client: () => Anthropic; embed?: Embed; log?: (msg: string, data?: Record<string, unknown>) => void };
+type JobDeps = { db: Firestore; client: () => Anthropic; embed?: Embed; send?: SendMail; log?: (msg: string, data?: Record<string, unknown>) => void };
 const KEEP_MS = 24 * 3600e3;
 
 /** 依頼を引き受ける（同じ依頼が2回届いても1回だけ処理する） */

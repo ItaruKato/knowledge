@@ -190,8 +190,14 @@ describe.skipIf(!HOST)('レポート（エミュレーター）', () => {
           },
         },
       }) as unknown as Anthropic;
-    const r = await dailyReport({ db, client }, Date.UTC(2026, 10, 13, 0, 0));
+    const sent: { subject: string }[] = [];
+    const r = await dailyReport({ db, client, send: async (m) => void sent.push(m) }, Date.UTC(2026, 10, 13, 0, 0));
     expect(r).toMatchObject({ picks: 1, netas: 1 });
+    expect(sent.map((m) => m.subject)).toEqual(['デイリー 2026-11-12：注目記事 1件と今日の営業ネタ']);
+    expect((await db.doc('kbReports/daily_20261112').get()).get('emailedAt')).toBeTruthy();
+    // 送れなくてもレポートは残し、理由を書く
+    await dailyReport({ db, client, send: async () => { throw new Error('Resend 401'); } }, Date.UTC(2026, 10, 13, 0, 0));
+    expect((await db.doc('kbReports/daily_20261112').get()).get('emailError')).toContain('Resend 401');
     expect(seen[0]).toContain('昨日（2026-11-12）の記事 2 件');
     expect(seen[0]).toContain('[1] 会社2.200｜新サービスB｜資金調達｜追っている会社（温度感A・商談）');
     expect(seen[0]).not.toContain('セミナー');

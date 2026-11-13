@@ -4,14 +4,28 @@ import { FieldPath, type Firestore } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { MODEL, SERVICES } from './analyze';
 import { addUsage, PRICES, usageOf } from './usage';
+import { dailyMail, weeklyMail, type SendMail } from './mail';
 
 /**
  * デイリー（毎朝9時）とウィークリー（日曜21時）のレポート（kbReports/{daily_YYYYMMDD | weekly_YYYYMMDD}）。本人の決定：
  * - デイリー：昨日の注目記事（5〜10件、理由つき）と、今日の営業ネタ3つ
  * - ウィークリー：今週のふりかえり、今週の事例ベスト、来週動くとよい会社、AI の費用
  * - 追っている会社（Long List の温度感 A・B と、進捗がアプローチ中・商談の会社）は、注目記事と「来週動くとよい会社」で優先する
- * - アプリの「レポート」タブで読む。メールはあとで（Resend）
+ * - アプリの「レポート」タブで読み、メールでも届ける（Resend。送れなくてもレポートは残し、emailError に理由を書く）
  */
+
+type ReportDeps = { db: Firestore; client: () => Anthropic; send?: SendMail };
+
+/** メールを送り、結果をレポートに書く（送れなくても止めない） */
+async function mailOut(ref: FirebaseFirestore.DocumentReference, send: SendMail | undefined, make: () => ReturnType<typeof dailyMail>) {
+  if (!send) return;
+  try {
+    await send(make());
+    await ref.set({ emailedAt: new Date().toISOString(), emailError: null }, { merge: true });
+  } catch (e) {
+    await ref.set({ emailError: String(e).slice(0, 300) }, { merge: true });
+  }
+}
 
 export const USD_JPY = 150;
 const JST = 9 * 3600e3;
@@ -99,7 +113,7 @@ picks: 営業の目で「昨日の注目記事」を5〜10件選ぶ。担当者�
 netas: 今日の営業ネタを3つ。talk はそのまま話せる一言（60〜90字。他社に事例として紹介する、またはこの会社に話しかけるきっかけ）、to は誰に話すとよいか（例：シリーズA前後の SaaS 企業の経営者）、n は根拠の記事の番号。
 記事にないことは書かない。番号は渡されたものだけを使う。`;
 
-export async function dailyReport(deps: { db: Firestore; client: () => Anthropic }, now = Date.now()) {
+export async function dailyReport(deps: ReportDeps, now = Date.now()) {
   const { db } = deps;
   const today = jstDayStart(now);
   const from = today - DAY;
@@ -145,7 +159,9 @@ export async function dailyReport(deps: { db: Firestore; client: () => Anthropic
     .filter((x) => byN.has(x.n))
     .slice(0, 3)
     .map((x) => ({ talk: x.talk.slice(0, 200), to: x.to.slice(0, 80), ...art(byN.get(x.n)!) }));
-  await ref.set({ kind: 'daily', date, picks, netas, counts: { articles: all.length }, model: r.model ?? MODEL, at: new Date().toISOString() });
+  const report = { kind: 'daily', date, picks, netas, counts: { articles: all.length }, model: r.model ?? MODEL, at: new Date().toISOString() };
+  await ref.set(report);
+  await mailOut(ref, deps.send, () => dailyMail(report));
   return { picks: picks.length, netas: netas.length };
 }
 
@@ -186,7 +202,7 @@ export async function costBetween(db: Firestore, fromDay: string, toDay: string)
   return { kb, watcher };
 }
 
-export async function weeklyReport(deps: { db: Firestore; client: () => Anthropic }, now = Date.now()) {
+export async function weeklyReport(deps: ReportDeps, now = Date.now()) {
   const { db } = deps;
   // 今週＝月曜 0:00 から今まで（JST）
   const today = jstDayStart(now);
@@ -258,7 +274,7 @@ export async function weeklyReport(deps: { db: Firestore; client: () => Anthropi
   const week = await costBetween(db, fromDay, toDay);
   const month = await costBetween(db, `${toDay.slice(0, 8)}01`, toDay);
   const ref = db.collection('kbReports').doc(`weekly_${toDay.replace(/-/g, '')}`);
-  await ref.set({
+  const report = {
     kind: 'weekly',
     date: toDay,
     from: fromDay,
@@ -269,7 +285,9 @@ export async function weeklyReport(deps: { db: Firestore; client: () => Anthropi
     cost: { usdJpy: USD_JPY, week, month },
     ...(model ? { model } : {}),
     at: new Date().toISOString(),
-  });
+  };
+  await ref.set(report);
+  await mailOut(ref, deps.send, () => weeklyMail(report as Parameters<typeof weeklyMail>[0]));
   return { best: best.length, companies: companies.length };
 }
 

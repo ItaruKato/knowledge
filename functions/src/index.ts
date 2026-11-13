@@ -10,6 +10,7 @@ import { runJob } from './jobs';
 import { indexSweep } from './allindex';
 import { vertexEmbed } from './vertex';
 import { dailyReport, weeklyReport } from './reports';
+import { resendSender } from './mail';
 
 /**
  * Knowledge Base の Cloud Functions（codebase: knowledge）。
@@ -21,6 +22,9 @@ const db = getFirestore();
 
 const common = { region: 'asia-northeast1', timeZone: 'Asia/Tokyo' } as const;
 const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
+/** レポートのメール（Resend。送信だけの権限のキー） */
+const resendKey = defineSecret('RESEND_API_KEY');
+const sender = () => resendSender(resendKey.value());
 const claude = () => new Anthropic({ apiKey: anthropicKey.value(), maxRetries: 2, timeout: 180_000 });
 
 /** 読了にした記事（handoff）を取り込み、本文を読んで AI で整理する（10分ごと） */
@@ -36,10 +40,10 @@ export const kbIngest = onSchedule(
  * Firestore の書き込みで動くだけで、外から呼べる入口ではない。届かなかった分は kbIngest が拾う。
  */
 export const kbJobRun = onDocumentCreated(
-  { document: 'kbJobs/{jobId}', region: 'asia-northeast1', timeoutSeconds: 300, memory: '512MiB', secrets: [anthropicKey], retry: false },
+  { document: 'kbJobs/{jobId}', region: 'asia-northeast1', timeoutSeconds: 300, memory: '512MiB', secrets: [anthropicKey, resendKey], retry: false },
   async (event) => {
     if (!event.data) return;
-    await runJob({ db, client: claude, embed: vertexEmbed, log: (msg, data) => logger.info(msg, data) }, event.data.ref);
+    await runJob({ db, client: claude, embed: vertexEmbed, send: sender(), log: (msg, data) => logger.info(msg, data) }, event.data.ref);
   },
 );
 
@@ -56,18 +60,18 @@ export const kbIndexSweep = onSchedule(
 
 /** デイリー（毎朝9時に読めるよう 8:55 に作る）：昨日の注目記事と今日の営業ネタ3つ */
 export const kbDailyReport = onSchedule(
-  { ...common, schedule: '55 8 * * *', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey], retryCount: 1 },
+  { ...common, schedule: '55 8 * * *', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey, resendKey], retryCount: 1 },
   async () => {
-    const r = await dailyReport({ db, client: claude });
+    const r = await dailyReport({ db, client: claude, send: sender() });
     logger.info('kb daily report', r);
   },
 );
 
 /** ウィークリー（日曜21時に読めるよう 20:55 に作る）：今週のふりかえり・事例ベスト・来週動くとよい会社・AI の費用 */
 export const kbWeeklyReport = onSchedule(
-  { ...common, schedule: '55 20 * * 0', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey], retryCount: 1 },
+  { ...common, schedule: '55 20 * * 0', timeoutSeconds: 540, memory: '1GiB', secrets: [anthropicKey, resendKey], retryCount: 1 },
   async () => {
-    const r = await weeklyReport({ db, client: claude });
+    const r = await weeklyReport({ db, client: claude, send: sender() });
     logger.info('kb weekly report', r);
   },
 );
