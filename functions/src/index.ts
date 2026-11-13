@@ -84,7 +84,10 @@ export const kbWeeklyReport = onSchedule(
  * 住所は関数の住所（https://kbmcp-…a.run.app/mcp）。ログインの確認は Knowledge Base の画面（/mcp-login）
  */
 export const kbMcp = onRequest(
-  { region: 'asia-northeast1', timeoutSeconds: 300, memory: '1GiB', secrets: [anthropicKey], invoker: 'public', concurrency: 20 },
+  // 組織のポリシーで「全員（allUsers）」に呼び出しを許す設定はできないので、ここでは許さない（private）。
+  // 代わりに、この1つのサービスだけ Cloud Run の呼び出し権限の確認を止める（本人が Cloud Shell で --no-invoker-iam-check）。
+  // それでも中身は OAuth で本人しか使えない
+  { region: 'asia-northeast1', timeoutSeconds: 300, memory: '1GiB', secrets: [anthropicKey], invoker: 'private', concurrency: 20 },
   async (req, res) => {
     const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v.join(',') : v]));
     const r = await handle(
