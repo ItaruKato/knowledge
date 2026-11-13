@@ -4,6 +4,7 @@ import { summarizeCompany } from './company';
 import { analyzeIndexed, searchIndex, type SearchFilters } from './search';
 import { askQuestion } from './ask';
 import { dailyReport, weeklyReport } from './reports';
+import { approve, cleanupExpired, revokeAll } from './mcp/oauth';
 import type { Embed } from './vertex';
 import type { SendMail } from './mail';
 
@@ -14,10 +15,13 @@ import type { SendMail } from './mail';
  * - search: 全記事を意味で探す（q: 言葉、filters: 期間・種類・事例だけ）。結果は result.hits
  * - analyze: 全記事の検索結果の記事を詳しく整理する（id: 記事ID）。本人がボタンを押したときだけ
  * - report: レポートを今すぐ作る（kind: daily / weekly）。画面の「今すぐ作る」
+ * - mcp_approve: Claude のチャットの窓口（MCP）のログインを本人が許可した（rid: 依頼の ID）。ルールで本人しか書けないので、これが本人の確認になる
+ * - mcp_revoke: 窓口の全部の接続を切る
  * - ask: アプリ内の質問（q: 質問）。答えは result（answer・sources）。履歴として残す（1日たっても消さない）
  */
 export interface KbJob {
-  type: 'company' | 'search' | 'analyze' | 'ask' | 'report';
+  type: 'company' | 'search' | 'analyze' | 'ask' | 'report' | 'mcp_approve' | 'mcp_revoke';
+  rid?: string;
   kind?: 'daily' | 'weekly';
   id?: string;
   redo?: boolean;
@@ -58,6 +62,17 @@ export async function runJob(deps: JobDeps, ref: DocumentReference): Promise<str
       const hits = await searchIndex(deps.db, deps.embed, String(job.q ?? ''), job.filters ?? {});
       await ref.update({ state: 'done', result: { hits }, doneAt: FieldValue.serverTimestamp() });
       return 'searched';
+    }
+    if (job.type === 'mcp_approve') {
+      if (!/^[0-9a-f]{32}$/.test(job.rid ?? '')) throw new Error('ログインの依頼が正しくありません');
+      const r = await approve(deps.db, job.rid!);
+      await ref.update({ state: 'done', result: r, doneAt: FieldValue.serverTimestamp() });
+      return r;
+    }
+    if (job.type === 'mcp_revoke') {
+      const n = await revokeAll(deps.db);
+      await ref.update({ state: 'done', result: { revoked: n }, doneAt: FieldValue.serverTimestamp() });
+      return 'revoked';
     }
     if (job.type === 'report') {
       const r = job.kind === 'weekly' ? await weeklyReport(deps) : await dailyReport(deps);
@@ -103,6 +118,8 @@ export async function jobSweep(deps: JobDeps, until: number) {
     for (const o of old.docs) if (o.get('type') !== 'ask') b.delete(o.ref);
     await b.commit();
   }
+  // 窓口（MCP）の期限切れの鍵・コード・依頼も片づける
+  await cleanupExpired(db).catch(() => 0);
   return { ran, cleaned: old.size };
 }
 

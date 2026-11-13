@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onRequest } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions/v2';
 import Anthropic from '@anthropic-ai/sdk';
@@ -11,6 +12,7 @@ import { indexSweep } from './allindex';
 import { vertexEmbed } from './vertex';
 import { dailyReport, weeklyReport } from './reports';
 import { resendSender } from './mail';
+import { handle } from './mcp/server';
 
 /**
  * Knowledge Base の Cloud Functions（codebase: knowledge）。
@@ -73,5 +75,26 @@ export const kbWeeklyReport = onSchedule(
   async () => {
     const r = await weeklyReport({ db, client: claude, send: sender() });
     logger.info('kb weekly report', r);
+  },
+);
+
+/**
+ * Claude のチャットから Knowledge Base を読む窓口（MCP。本人の決定 2026-11-13）。
+ * 「誰でも呼べる入口を作らない」の唯一の例外：住所はネットから届くが、OAuth で本人（i-kato@）がログインしないと何もできない。読むだけ。
+ * 住所は関数の住所（https://kbmcp-…a.run.app/mcp）。ログインの確認は Knowledge Base の画面（/mcp-login）
+ */
+export const kbMcp = onRequest(
+  { region: 'asia-northeast1', timeoutSeconds: 300, memory: '1GiB', secrets: [anthropicKey], invoker: 'public', concurrency: 20 },
+  async (req, res) => {
+    const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v.join(',') : v]));
+    const r = await handle(
+      { db, client: claude, embed: vertexEmbed },
+      { method: req.method, path: req.path, host: String(req.headers.host ?? ''), headers, query: req.query as Record<string, string>, body: req.body },
+    );
+    for (const [k, v] of Object.entries(r.headers ?? {})) res.setHeader(k, v);
+    res.status(r.status);
+    if (r.body === undefined) res.end();
+    else if (typeof r.body === 'string') res.send(r.body);
+    else res.send(JSON.stringify(r.body));
   },
 );

@@ -18,6 +18,7 @@ import { CompanyPage } from './pages/CompanyPage';
 import { AllPage } from './pages/AllPage';
 import { AskPage } from './pages/AskPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { McpLoginPage } from './pages/McpLoginPage';
 
 const TABS = [
   { path: '/', label: '読んだ記事' },
@@ -112,5 +113,7 @@ export default function App() {
   useEffect(() => onAuthStateChanged(auth, setUser), []);
   if (user === undefined) return <div className="login">読み込み中…</div>;
   if (!user || !isOwner(user)) return <Login auth={auth} wrongUser={user} />;
+  // Claude のチャットの窓口のログインの確認（タブは出さない）
+  if (location.pathname === '/mcp-login') return <McpLoginPage />;
   return <Home user={user} />;
 }

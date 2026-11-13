@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run test/unit.test.ts",
-    "test:emulator": "cd .. && npx -y firebase-tools@14.11.0 emulators:exec --only firestore --project prtimes-inbox \"cd functions && npx vitest run --no-file-parallelism test/emulator.test.ts test/index.emulator.test.ts\""
+    "test:emulator": "cd .. && npx -y firebase-tools@14.11.0 emulators:exec --only firestore --project prtimes-inbox \"cd functions && npx vitest run --no-file-parallelism test/emulator.test.ts test/index.emulator.test.ts test/mcp.emulator.test.ts\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

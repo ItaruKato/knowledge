@@ -38,6 +38,7 @@
 | 全記事（⑤） | 2026-09-01 以降の全記事を Opus で軽く分類（種類・業界・事例らしさ。まとめて処理する仕組みで半額）。詳しい整理（本文＋Opus）は検索結果の「詳しく整理」ボタンを押した記事だけ。検索は新しい「全記事」タブ（2026-11-12 本人の決定） |
 | 質問の履歴 | 残す（2026-11-13、案どおり） |
 | レポート（⑦） | デイリー：昨日の注目記事（5〜10件）と今日の営業ネタ3つ。ウィークリー：今週のふりかえり・事例ベスト・来週動くとよい会社・AI の費用。追っている会社＝Long List の温度感 A・B と、進捗がアプローチ中・商談の会社（注目記事と来週動くとよい会社で優先）。メールは Resend＋送信用サブドメイン（2026-11-13 本人の決定） |
+| Claude のチャットから（⑧） | 窓口（MCP）をネットに置き、OAuth で本人だけ・読むだけ。メモと Long List の温度感・進捗も渡す。根拠つきで答える道具（ask、Opus）も入れる。Claude Code からもつなげる（2026-11-13 本人が設計を見て決定。「画面から関数を直接呼ばない」の唯一の例外） |
 | まだ決めていない | ネタ1件の形（案：トーク例＋根拠の記事＋数字のカード）、質問の履歴（案：残す）、デイリー・ウィークリーの中身の細部 |
 
 ## 構成
@@ -63,6 +64,11 @@
   - 質問（v0.14、functions/src/ask.ts・src/pages/AskPage.tsx）：画面が kbJobs（type: ask, q）に書く → kbJobRun が答える。質問を数値にして kbIndex から近い順に200件 → 知識に入れない記事を除いて24件を根拠に。整理済みの記事は要約・数字・トーク例・メモも、上位6件は本文（kbBodies、なければ記事ページ）も渡す。Opus（effort high）が 結論・根拠の番号つきの要点・メモの引用・記事に基づかない一般的な知識（分けて）・記事だけでは足りないか・次に聞くとよいこと を返す。根拠の番号が渡した記事にない要点は捨てる。ask の依頼は1日たっても消さない（履歴）。読んだ記事は整理したときに kbIndex にも入れる（9月より前の記事も質問で見つかるように）
   - レポート（v0.15、functions/src/reports.ts・src/pages/ReportsPage.tsx）：`kbDailyReport`（毎日 8:55）が昨日の全記事（kbIndex。知識に入れない記事を除く。多いときは追っている会社・事例らしい記事を先に900件まで）と★の例を Opus に渡し、注目記事と営業ネタを選ぶ。`kbWeeklyReport`（日曜 20:55）が月曜からの件数（種類別・読んだ記事・増えたテーマ）、事業の動きの記事（最大700件）と今週のメモから事例ベスト5・来週動くとよい会社5を選び、AI の費用（kbMeta/usage_日＋Watcher・台帳の aiUsage/日、1ドル=150円）を出す。kbReports/{daily_YYYYMMDD・weekly_YYYYMMDD} に書く。画面の「今すぐ作る」は kbJobs（type: report, kind）
   - メール（v0.16、functions/src/mail.ts）：Resend で report@kb.spark-partners.jp から本人あてだけに。キーは Secret Manager の RESEND_API_KEY（送信だけの権限・kb.spark-partners.jp だけ）。DNS（Cloudflare）に resend._domainkey.kb（TXT）・rsend.kb・send.kb（CNAME、DNS only）を本人が足した（2026-11-13）。リンクは PR TIMES の記事と自分のアプリだけ。送れなくてもレポートは残し、emailError に理由を書く
+  - Claude のチャットの窓口（v0.17、functions/src/mcp/・src/pages/McpLoginPage.tsx・src/components/McpBox.tsx）
+    - 関数 `kbMcp`（onRequest、invoker public、timeout 300 秒）。住所は Cloud Run の住所（src/lib/mcp.ts の MCP_URL）。Hosting を通すと60秒で切れるので直接
+    - Streamable HTTP（状態なし・JSON で返す）。initialize・ping・tools/list・tools/call。道具：search_articles・get_article・find_companies・get_company・list_themes・get_theme・list_cases・get_report・ask（すべて読むだけ。ask は窓口の中で Opus）
+    - OAuth 2.1：/.well-known/oauth-protected-resource・/.well-known/oauth-authorization-server、/register（DCR。受け取り先は https://claude.ai/api/mcp/auth_callback と localhost・127.0.0.1 の /callback だけ）、/authorize → 画面の /mcp-login（本人が Google でログインして「許可する」→ kbJobs の mcp_approve。ルールで本人しか書けない）→ /oauth/continue でコード → /token（PKCE S256、合鍵1時間、更新の鍵30日・使うたびに作り直し、使い回されたら系統ごと消す）
+    - 鍵・コードはハッシュだけを kbMcpTokens・kbMcpCodes に（画面から読めないルール）。期限切れは kbIngest のついでに消す。回数の上限は1分120回。記録は道具の名前と回数だけ（kbMeta/mcp）。「全部の接続を切る」は kbJobs の mcp_revoke
   - 検索窓（v0.8）：タブの下に1つ。言葉はタブを切り替えても残り、× ボタン（または Esc）で一度に消せる。読んだ記事・先行事例・ネタ帳（テーマとネタ）・会社の一覧・会社ページの PR TIMES の記事を絞る。正式な会社名でも探せる
   - 見た目（v0.7）：色の名前は Watcher とそろえ、文字と背景の差を大きくした（補足の文字も 4.5:1 以上）。カードは「課題・狙い」「トーク例」「自分のメモ」に見出しを付け、業界（青）・規模/段階（緑）・課題（黄）で色を分ける
 - 関数：`functions/`（codebase `knowledge`、関数名は `kb` で始める）。デプロイは GitHub Actions が `--only hosting:knowledge,functions:knowledge` で出す
@@ -106,7 +112,8 @@
 - [x] アプリ内の質問（根拠の記事つき・メモの引用・一般知識は分けて・履歴）（v0.14）
 - [x] レポート（デイリー・ウィークリー）をアプリで（v0.15）
 - [x] レポートのメール（Resend）（v0.16）
-- [ ] MCP → パートナー
+- [x] Claude のチャットから質問（MCP）（v0.17）
+- [ ] 社外パートナーの招待
 
 ## データの形（自分のコレクション）
 - `kbArticles/{記事ID}`：v、id、companyId、source（handoff）、title・company・url・publishedAt、readAt、memo・myTags・stars（Watcher から写す）、draft（Watcher の AI の下書き）、bodyFrom（page / lead）、kb（articleType・industry・stage・stageReason・challenges・challengeNote・isCase・caseTitle・caseSummary・facts・talk）、themes（テーマ名の配列）、model、analyzedAt、analysisV、inputHash、state（done / failed）、tries、error

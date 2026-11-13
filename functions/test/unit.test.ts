@@ -213,3 +213,31 @@ describe('レポートのメール', () => {
     expect(weeklyMail({ date: '2026-11-15', from: '2026-11-09', cost: { usdJpy: 150, week: { kb: 1, watcher: 2 }, month: { kb: 10, watcher: 20 } } }).text).toContain('今月の合計 約4,500円');
   });
 });
+
+import { createHash as _hash } from 'node:crypto';
+import { pkceOk, redirectAllowed, redirectMatches } from '../src/mcp/oauth';
+import { baseOf } from '../src/mcp/server';
+
+describe('Claude の窓口（MCP）', () => {
+  it('合鍵の受け取り先は Claude の住所と、パソコンの中の /callback だけ', () => {
+    expect(redirectAllowed('https://claude.ai/api/mcp/auth_callback')).toBe(true);
+    expect(redirectAllowed('http://localhost:53122/callback')).toBe(true);
+    expect(redirectAllowed('http://127.0.0.1:8080/callback')).toBe(true);
+    for (const bad of ['https://evil.example/api/mcp/auth_callback', 'https://claude.ai/other', 'http://localhost:1/callback?x=1', 'https://localhost/callback', 'http://evil.com/callback'])
+      expect(redirectAllowed(bad)).toBe(false);
+    expect(redirectMatches(['http://localhost:1111/callback'], 'http://localhost:2222/callback')).toBe(true);
+    expect(redirectMatches(['https://claude.ai/api/mcp/auth_callback'], 'http://localhost:2222/callback')).toBe(false);
+  });
+  it('PKCE（S256）', () => {
+    const v = 'a'.repeat(50);
+    const c = _hash('sha256').update(v).digest('base64url');
+    expect(pkceOk(v, c)).toBe(true);
+    expect(pkceOk('b'.repeat(50), c)).toBe(false);
+    expect(pkceOk('short', c)).toBe(false);
+  });
+  it('自分の住所は Cloud Run の kbmcp だけを信じる', () => {
+    expect(baseOf('kbmcp-abc123-an.a.run.app')).toBe('https://kbmcp-abc123-an.a.run.app');
+    expect(baseOf('evil.example')).toBeNull();
+    expect(baseOf('other-abc-an.a.run.app')).toBeNull();
+  });
+});

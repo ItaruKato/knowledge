@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { fmtDate, fmtTime } from '../lib/format';
 import { linkProps } from '../lib/router';
 import type { KbData } from '../data/useKb';
+import { McpBox } from '../components/McpBox';
 
 /**
  * アプリ内の質問。質問を kbJobs（type: ask）に書くと、関数が全記事と読んだ記事を根拠に答える（functions/src/ask.ts）。
@@ -183,6 +184,7 @@ export function AskPage({ data }: { data: KbData }) {
   return (
     <div className="cases">
       <aside className="filters open">
+        <McpBox />
         <b className="lbl">これまでの質問</b>
         {history.length === 0 && <p className="note">まだ質問していません。</p>}
         {history.map((h) => (
