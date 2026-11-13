@@ -37,7 +37,18 @@ export const vertexEmbed: Embed = async (texts, task) => {
       last = `${region}: 404`;
       continue;
     }
-    if (!res.ok) throw new Error(`Vertex AI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      // 理由を1行にする（画面の「止まりました」に全部出るように）
+      const raw = await res.text();
+      let why = raw;
+      try {
+        const e = (JSON.parse(raw) as { error?: { status?: string; message?: string } }).error;
+        if (e) why = `${e.status ?? ''} ${e.message ?? ''}`;
+      } catch {
+        /* JSON でなければそのまま */
+      }
+      throw new Error(`Vertex AI ${res.status}（${region}）: ${why.replace(/\s+/g, ' ').trim().slice(0, 240)}`);
+    }
     const j = (await res.json()) as { predictions?: { embeddings?: { values?: number[] } }[] };
     const out = (j.predictions ?? []).map((p) => p.embeddings?.values ?? []);
     if (out.length !== texts.length || out.some((v) => v.length !== EMBED_DIM)) throw new Error('Vertex AI の答えの形が違います');
