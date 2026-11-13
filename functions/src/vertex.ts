@@ -7,7 +7,7 @@ import { GoogleAuth } from 'google-auth-library';
 export const EMBED_MODEL = 'text-multilingual-embedding-002';
 export const EMBED_DIM = 768;
 const PROJECT = 'prtimes-inbox';
-/** 東京で使えなければアメリカ（us-central1）を使う */
+/** 東京で使えなければ（見つからない・権限がないと返ったら）アメリカ（us-central1）を使う */
 const REGIONS = ['asia-northeast1', 'us-central1'];
 /** 1回に送る数（このモデルの上限より少なめ） */
 export const EMBED_BATCH = 50;
@@ -47,14 +47,17 @@ export const vertexEmbed: Embed = async (texts, task) => {
       } catch {
         /* JSON でなければそのまま */
       }
-      throw new Error(`Vertex AI ${res.status}（${region}）: ${why.replace(/\s+/g, ' ').trim().slice(0, 240)}`);
+      last = `Vertex AI ${res.status}（${region}）: ${why.replace(/\s+/g, ' ').trim().slice(0, 240)}`;
+      // その拠点にモデルがないときも 403（PERMISSION_DENIED … or it may not exist）が返るので、次の拠点を試す
+      if (res.status === 403) continue;
+      throw new Error(last);
     }
     const j = (await res.json()) as { predictions?: { embeddings?: { values?: number[] } }[] };
     const out = (j.predictions ?? []).map((p) => p.embeddings?.values ?? []);
     if (out.length !== texts.length || out.some((v) => v.length !== EMBED_DIM)) throw new Error('Vertex AI の答えの形が違います');
     return out;
   }
-  throw new Error(`Vertex AI のモデルが見つかりません（${last}）`);
+  throw new Error(last.startsWith('Vertex AI') ? last : `Vertex AI のモデルが見つかりません（${last}）`);
 };
 
 /** 記事を数値にするときの文（会社・タイトル・冒頭・キーワード） */
